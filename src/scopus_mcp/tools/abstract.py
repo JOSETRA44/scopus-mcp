@@ -6,7 +6,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from ..client import ScopusClient
-from ..exceptions import ScopusAPIError
+from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_abstract
 
 
@@ -51,7 +51,18 @@ def register_abstract_tools(mcp: FastMCP, client: ScopusClient) -> None:
         path = path_map[identifier_type]
 
         try:
-            raw = await client.request(path, params={"view": "FULL"})
-            return format_abstract(raw)
+            try:
+                raw = await client.request(path, params={"view": "FULL"})
+                return format_abstract(raw)
+            except ScopusAuthError:
+                # Free API keys can't access FULL/META_ABS views — fall back to META
+                raw = await client.request(path, params={"view": "META"})
+                result = format_abstract(raw)
+                result["access_note"] = (
+                    "Returned metadata only (view=META). Abstract text, full author list, "
+                    "and keywords require an institutional Elsevier token. "
+                    "Set SCOPUS_INST_TOKEN in your .env file for full access."
+                )
+                return result
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

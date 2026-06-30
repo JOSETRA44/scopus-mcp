@@ -5,7 +5,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from ..client import ScopusClient
-from ..exceptions import ScopusAPIError
+from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import (
     format_affiliation_search_results,
     format_author_search_results,
@@ -81,6 +81,11 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
                 params={"query": query, "count": count},
             )
             return format_author_search_results(raw, query=query)
+        except ScopusAuthError as exc:
+            raise ToolError(
+                "Author search requires an institutional Elsevier subscription. "
+                "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
+            ) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -108,5 +113,10 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
                 params={"query": query, "count": count},
             )
             return format_affiliation_search_results(raw, query=query)
+        except ScopusAuthError as exc:
+            raise ToolError(
+                "Affiliation search requires an institutional Elsevier subscription. "
+                "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
+            ) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

@@ -90,7 +90,7 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
     raw_id = _safe_get(core, "dc:identifier", default="")
     scopus_id = _strip_scopus_id(raw_id)
 
-    # Authors
+    # Authors — FULL view has root["authors"]["author"]; META view has coredata["dc:creator"]
     authors_raw = _safe_get(root, "authors", "author", default=[])
     if isinstance(authors_raw, dict):
         authors_raw = [authors_raw]
@@ -108,6 +108,28 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
         if affil_name:
             author_entry["affiliation"] = affil_name
         authors.append(author_entry)
+    # META view fallback: dc:creator holds the author.
+    # It may be a plain string ("Smith J.") or a rich dict {"author": [{...}]}.
+    if not authors:
+        creator = _safe_get(core, "dc:creator")
+        if isinstance(creator, str) and creator:
+            authors = [{"name": creator}]
+        elif isinstance(creator, dict):
+            author_list = creator.get("author", [])
+            if isinstance(author_list, dict):
+                author_list = [author_list]
+            for a in (author_list or [])[:10]:
+                surname = _safe_get(a, "ce:surname", default="")
+                given = _safe_get(a, "ce:given-name", default="")
+                initials = _safe_get(a, "ce:initials", default="")
+                name = f"{surname}, {given or initials}".strip(", ")
+                if not name:
+                    continue
+                author_entry: dict[str, Any] = {"name": name}
+                auid = _safe_get(a, "@auid")
+                if auid:
+                    author_entry["scopus_author_id"] = auid
+                authors.append(author_entry)
 
     # Keywords
     kw_group = _safe_get(root, "authkeywords", "author-keyword", default=[])
@@ -156,6 +178,22 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
     language = _safe_get(root, "language", "@xml:lang")
     if language:
         result["language"] = language
+
+    # META view: affiliations are at root level (not under authors)
+    if not result.get("authors") or all(not a.get("affiliation") for a in result.get("authors", [])):
+        affil_list = _safe_get(root, "affiliation", default=[])
+        if isinstance(affil_list, dict):
+            affil_list = [affil_list]
+        if affil_list:
+            result["affiliations"] = [
+                {
+                    "name": _safe_get(a, "affilname", default=""),
+                    "city": _safe_get(a, "affiliation-city"),
+                    "country": _safe_get(a, "affiliation-country"),
+                }
+                for a in affil_list
+                if _safe_get(a, "affilname")
+            ]
 
     return result
 

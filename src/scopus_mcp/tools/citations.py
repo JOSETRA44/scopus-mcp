@@ -5,8 +5,15 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from ..client import ScopusClient
-from ..exceptions import ScopusAPIError
+from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_citation_count, format_citations_overview
+
+_INST_NOTE = (
+    "This endpoint requires an institutional Elsevier subscription. "
+    "Set SCOPUS_INST_TOKEN in your .env file. "
+    "Tip: the cited_by_count field in scopus_search and scopus_get_abstract "
+    "provides citation totals without institutional access."
+)
 
 
 def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
@@ -42,6 +49,8 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
         try:
             raw = await client.request("/content/abstract/citation-count", params=params)
             return format_citation_count(raw)
+        except ScopusAuthError as exc:
+            raise ToolError(_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -83,5 +92,7 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
                 },
             )
             return format_citations_overview(raw)
+        except ScopusAuthError as exc:
+            raise ToolError(_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

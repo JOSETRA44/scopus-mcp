@@ -5,7 +5,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from ..client import ScopusClient
-from ..exceptions import ScopusAPIError
+from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_author_profile
 
 
@@ -34,5 +34,10 @@ def register_author_tools(mcp: FastMCP, client: ScopusClient) -> None:
                 params={"view": "ENHANCED"},
             )
             return format_author_profile(raw)
+        except ScopusAuthError as exc:
+            raise ToolError(
+                f"Author retrieval requires an institutional Elsevier subscription. "
+                f"Set SCOPUS_INST_TOKEN in your .env file. ({exc})"
+            ) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
