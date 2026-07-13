@@ -40,6 +40,8 @@ Changelog = "https://github.com/JOSETRA44/scopus-mcp/releases"
 
 [project.scripts]
 scopus-mcp = "scopus_mcp.server:main"
+scopus = "scopus_mcp.server:main"
+scps = "scopus_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scopus_mcp"]

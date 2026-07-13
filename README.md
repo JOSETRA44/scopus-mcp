@@ -79,6 +79,42 @@ uv run scopus-mcp          # run directly from source
 
 ---
 
+## Terminal CLI
+
+Besides running as an MCP server, `scopus-mcp` also installs three equivalent commands — `scopus-mcp`, `scopus`, and the short alias `scps` — as a **standalone command-line tool** for one-off lookups, testing your API key, or scripting, no MCP client required.
+
+```bash
+# Install globally as a uv tool (adds scopus / scps / scopus-mcp to PATH)
+uv tool install --editable /path/to/scopus-mcp
+
+scopus --help                 # list all subcommands
+scopus check                  # validate your API key live against each endpoint
+scopus search 'TITLE-ABS-KEY("machine learning")' --count 5
+scps abstract 85180904906 --type scopus_id
+scopus author 7401234567
+scopus search-authors "AUTHLASTNAME(Smith)"
+scopus search-affiliations "AFFIL(MIT)"
+scopus citation-count --doi 10.1016/j.cell.2023.01.001
+scopus citations 85180904906 --start-year 2020 --end-year 2024
+```
+
+Add `--json` to any subcommand for raw structured output (useful for piping into `jq` or scripts).
+
+> Running any of the three commands **with no subcommand** starts the MCP stdio server instead — the mode MCP clients (Claude Desktop, Claude Code, etc.) use. It will sit waiting for input on stdin; that's expected, not a hang.
+
+| Subcommand | Equivalent MCP tool |
+|---|---|
+| `search <query>` | `scopus_search` |
+| `abstract <id> --type ...` | `scopus_get_abstract` |
+| `author <author_id>` | `scopus_get_author` |
+| `search-authors <query>` | `scopus_search_authors` |
+| `search-affiliations <query>` | `scopus_search_affiliations` |
+| `citation-count --scopus-id/--doi` | `scopus_get_citation_count` |
+| `citations <scopus_id>` | `scopus_get_citations_overview` |
+| `check` | *(CLI-only)* diagnostic — live-checks your key against every endpoint |
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
@@ -352,7 +388,10 @@ The server tracks rate limits from response headers and sleeps automatically bef
 ## Verify It's Working
 
 ```bash
-# Interactive browser UI (recommended)
+# Fastest check: validates your API key live against every endpoint
+scopus check
+
+# Interactive browser UI (recommended for MCP-specific debugging)
 npx @modelcontextprotocol/inspector uvx scopus-mcp
 
 # Quick smoke test (server starts and exits cleanly)
@@ -393,7 +432,8 @@ Try broadening your query: replace `TITLE(...)` with `TITLE-ABS-KEY(...)` or rem
 ```
 scopus-mcp/
 ├── src/scopus_mcp/
-│   ├── server.py        # FastMCP entry point — registers tools, prompts, resources
+│   ├── server.py        # Entry point — dispatches to CLI or FastMCP stdio server
+│   ├── cli.py           # Terminal CLI (scopus / scps): subcommands + check diagnostic
 │   ├── config.py        # Env var configuration (pydantic-settings)
 │   ├── client.py        # Async HTTP client + TTL cache + rate limiter
 │   ├── exceptions.py    # Error hierarchy

@@ -12,6 +12,45 @@ from ..formatters import (
     format_search_results,
 )
 
+AUTHOR_SEARCH_INST_NOTE = (
+    "Author search requires an institutional Elsevier subscription. "
+    "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
+)
+AFFILIATION_SEARCH_INST_NOTE = (
+    "Affiliation search requires an institutional Elsevier subscription. "
+    "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
+)
+
+
+async def do_scopus_search(
+    client: ScopusClient,
+    query: str,
+    count: int = 10,
+    start: int = 0,
+    view: str = "STANDARD",
+) -> dict:
+    raw = await client.request(
+        "/content/search/scopus",
+        params={"query": query, "count": count, "start": start, "view": view},
+    )
+    return format_search_results(raw, query=query)
+
+
+async def do_scopus_search_authors(client: ScopusClient, query: str, count: int = 10) -> dict:
+    raw = await client.request(
+        "/content/search/author",
+        params={"query": query, "count": count},
+    )
+    return format_author_search_results(raw, query=query)
+
+
+async def do_scopus_search_affiliations(client: ScopusClient, query: str, count: int = 10) -> dict:
+    raw = await client.request(
+        "/content/search/affiliation",
+        params={"query": query, "count": count},
+    )
+    return format_affiliation_search_results(raw, query=query)
+
 
 def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
 
@@ -47,11 +86,7 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
         ] = "STANDARD",
     ) -> dict:
         try:
-            raw = await client.request(
-                "/content/search/scopus",
-                params={"query": query, "count": count, "start": start, "view": view},
-            )
-            return format_search_results(raw, query=query)
+            return await do_scopus_search(client, query, count, start, view)
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -76,16 +111,9 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
         ] = 10,
     ) -> dict:
         try:
-            raw = await client.request(
-                "/content/search/author",
-                params={"query": query, "count": count},
-            )
-            return format_author_search_results(raw, query=query)
+            return await do_scopus_search_authors(client, query, count)
         except ScopusAuthError as exc:
-            raise ToolError(
-                "Author search requires an institutional Elsevier subscription. "
-                "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
-            ) from exc
+            raise ToolError(AUTHOR_SEARCH_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -108,15 +136,8 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
         ] = 10,
     ) -> dict:
         try:
-            raw = await client.request(
-                "/content/search/affiliation",
-                params={"query": query, "count": count},
-            )
-            return format_affiliation_search_results(raw, query=query)
+            return await do_scopus_search_affiliations(client, query, count)
         except ScopusAuthError as exc:
-            raise ToolError(
-                "Affiliation search requires an institutional Elsevier subscription. "
-                "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
-            ) from exc
+            raise ToolError(AFFILIATION_SEARCH_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

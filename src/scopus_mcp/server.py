@@ -5,6 +5,7 @@ from typing import AsyncIterator
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+from .cli import build_parser, get_version, main_cli
 from .client import ScopusClient
 from .config import get_settings
 from .exceptions import ScopusConfigError
@@ -71,7 +72,19 @@ def create_app() -> FastMCP:
 
 
 def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.version:
+        print(get_version())
+        return
+
     load_dotenv()
+
+    if args.command is not None:
+        raise SystemExit(main_cli(args))
+
+    # No subcommand: start the MCP stdio server (for use by an MCP client).
     try:
         app = create_app()
     except ScopusConfigError as exc:

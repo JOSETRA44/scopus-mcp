@@ -8,6 +8,20 @@ from ..client import ScopusClient
 from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_author_profile
 
+AUTHOR_INST_NOTE = (
+    "Author retrieval requires an institutional Elsevier subscription. "
+    "Set SCOPUS_INST_TOKEN in your .env file."
+)
+
+
+async def do_get_author(client: ScopusClient, author_id: str) -> dict:
+    clean = author_id.strip().replace("AUTHOR_ID:", "")
+    raw = await client.request(
+        f"/content/author/author_id/{clean}",
+        params={"view": "ENHANCED"},
+    )
+    return format_author_profile(raw)
+
 
 def register_author_tools(mcp: FastMCP, client: ScopusClient) -> None:
 
@@ -27,17 +41,9 @@ def register_author_tools(mcp: FastMCP, client: ScopusClient) -> None:
             Field(description="Scopus Author ID (numeric string, without 'AUTHOR_ID:' prefix)"),
         ],
     ) -> dict:
-        clean = author_id.strip().replace("AUTHOR_ID:", "")
         try:
-            raw = await client.request(
-                f"/content/author/author_id/{clean}",
-                params={"view": "ENHANCED"},
-            )
-            return format_author_profile(raw)
+            return await do_get_author(client, author_id)
         except ScopusAuthError as exc:
-            raise ToolError(
-                f"Author retrieval requires an institutional Elsevier subscription. "
-                f"Set SCOPUS_INST_TOKEN in your .env file. ({exc})"
-            ) from exc
+            raise ToolError(f"{AUTHOR_INST_NOTE} ({exc})") from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

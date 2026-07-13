@@ -8,12 +8,50 @@ from ..client import ScopusClient
 from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_citation_count, format_citations_overview
 
-_INST_NOTE = (
+CITATIONS_INST_NOTE = (
     "This endpoint requires an institutional Elsevier subscription. "
     "Set SCOPUS_INST_TOKEN in your .env file. "
     "Tip: the cited_by_count field in scopus_search and scopus_get_abstract "
     "provides citation totals without institutional access."
 )
+
+
+async def do_get_citation_count(
+    client: ScopusClient,
+    scopus_id: str | None = None,
+    doi: str | None = None,
+) -> dict:
+    if not scopus_id and not doi:
+        raise ValueError("Provide at least one of: scopus_id or doi.")
+
+    params: dict = {}
+    if scopus_id:
+        params["scopus_id"] = scopus_id.strip()
+    elif doi:
+        params["doi"] = doi.strip()
+
+    raw = await client.request("/content/abstract/citation-count", params=params)
+    return format_citation_count(raw)
+
+
+async def do_get_citations_overview(
+    client: ScopusClient,
+    scopus_id: str,
+    start_year: int = 2000,
+    end_year: int = 2025,
+) -> dict:
+    if start_year > end_year:
+        raise ValueError("start_year must be less than or equal to end_year.")
+
+    raw = await client.request(
+        "/content/abstract/citations",
+        params={
+            "scopus_id": scopus_id.strip(),
+            "date": f"{start_year}-{end_year}",
+            "httpAccept": "application/json",
+        },
+    )
+    return format_citations_overview(raw)
 
 
 def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
@@ -37,20 +75,12 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
             Field(default=None, description="DOI of the paper"),
         ] = None,
     ) -> dict:
-        if not scopus_id and not doi:
-            raise ToolError("Provide at least one of: scopus_id or doi.")
-
-        params: dict = {}
-        if scopus_id:
-            params["scopus_id"] = scopus_id.strip()
-        elif doi:
-            params["doi"] = doi.strip()
-
         try:
-            raw = await client.request("/content/abstract/citation-count", params=params)
-            return format_citation_count(raw)
+            return await do_get_citation_count(client, scopus_id, doi)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
         except ScopusAuthError as exc:
-            raise ToolError(_INST_NOTE) from exc
+            raise ToolError(CITATIONS_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -79,20 +109,11 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
             Field(default=2025, ge=1960, le=2030, description="Last year of citation range"),
         ] = 2025,
     ) -> dict:
-        if start_year > end_year:
-            raise ToolError("start_year must be less than or equal to end_year.")
-
         try:
-            raw = await client.request(
-                "/content/abstract/citations",
-                params={
-                    "scopus_id": scopus_id.strip(),
-                    "date": f"{start_year}-{end_year}",
-                    "httpAccept": "application/json",
-                },
-            )
-            return format_citations_overview(raw)
+            return await do_get_citations_overview(client, scopus_id, start_year, end_year)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
         except ScopusAuthError as exc:
-            raise ToolError(_INST_NOTE) from exc
+            raise ToolError(CITATIONS_INST_NOTE) from exc
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc

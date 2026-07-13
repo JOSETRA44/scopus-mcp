@@ -9,6 +9,45 @@ from ..client import ScopusClient
 from ..exceptions import ScopusAPIError, ScopusAuthError
 from ..formatters import format_abstract
 
+IdentifierType = Literal["scopus_id", "doi", "eid", "pubmed_id"]
+
+ABSTRACT_ACCESS_NOTE = (
+    "Returned metadata only (view=META). Abstract text, full author list, "
+    "and keywords require an institutional Elsevier token. "
+    "Set SCOPUS_INST_TOKEN in your .env file for full access."
+)
+
+
+def _abstract_path(identifier_type: IdentifierType, identifier: str) -> str:
+    clean = identifier.strip()
+    # Strip common prefixes users might include
+    for prefix in ("SCOPUS_ID:", "EID:", "PMID:"):
+        if clean.upper().startswith(prefix):
+            clean = clean[len(prefix):]
+            break
+
+    path_map: dict[str, str] = {
+        "scopus_id": f"/content/abstract/scopus_id/{clean}",
+        "doi": f"/content/abstract/doi/{urllib.parse.quote(clean, safe='')}",
+        "eid": f"/content/abstract/eid/{clean}",
+        "pubmed_id": f"/content/abstract/pubmed_id/{clean}",
+    }
+    return path_map[identifier_type]
+
+
+async def do_get_abstract(client: ScopusClient, identifier_type: IdentifierType, identifier: str) -> dict:
+    """Fetch abstract details, falling back FULL -> META for free API keys."""
+    path = _abstract_path(identifier_type, identifier)
+    try:
+        raw = await client.request(path, params={"view": "FULL"})
+        return format_abstract(raw)
+    except ScopusAuthError:
+        # Free API keys can't access FULL/META_ABS views — fall back to META
+        raw = await client.request(path, params={"view": "META"})
+        result = format_abstract(raw)
+        result["access_note"] = ABSTRACT_ACCESS_NOTE
+        return result
+
 
 def register_abstract_tools(mcp: FastMCP, client: ScopusClient) -> None:
 
@@ -27,7 +66,7 @@ def register_abstract_tools(mcp: FastMCP, client: ScopusClient) -> None:
     )
     async def scopus_get_abstract(
         identifier_type: Annotated[
-            Literal["scopus_id", "doi", "eid", "pubmed_id"],
+            IdentifierType,
             Field(description="Type of identifier being provided"),
         ],
         identifier: Annotated[
@@ -35,34 +74,7 @@ def register_abstract_tools(mcp: FastMCP, client: ScopusClient) -> None:
             Field(description="The identifier value (strip any 'SCOPUS_ID:' prefix from scopus_id)"),
         ],
     ) -> dict:
-        clean = identifier.strip()
-        # Strip common prefixes users might include
-        for prefix in ("SCOPUS_ID:", "EID:", "PMID:"):
-            if clean.upper().startswith(prefix):
-                clean = clean[len(prefix):]
-                break
-
-        path_map: dict[str, str] = {
-            "scopus_id": f"/content/abstract/scopus_id/{clean}",
-            "doi": f"/content/abstract/doi/{urllib.parse.quote(clean, safe='')}",
-            "eid": f"/content/abstract/eid/{clean}",
-            "pubmed_id": f"/content/abstract/pubmed_id/{clean}",
-        }
-        path = path_map[identifier_type]
-
         try:
-            try:
-                raw = await client.request(path, params={"view": "FULL"})
-                return format_abstract(raw)
-            except ScopusAuthError:
-                # Free API keys can't access FULL/META_ABS views — fall back to META
-                raw = await client.request(path, params={"view": "META"})
-                result = format_abstract(raw)
-                result["access_note"] = (
-                    "Returned metadata only (view=META). Abstract text, full author list, "
-                    "and keywords require an institutional Elsevier token. "
-                    "Set SCOPUS_INST_TOKEN in your .env file for full access."
-                )
-                return result
+            return await do_get_abstract(client, identifier_type, identifier)
         except ScopusAPIError as exc:
             raise ToolError(str(exc)) from exc
