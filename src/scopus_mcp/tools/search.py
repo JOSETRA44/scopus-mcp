@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any, AsyncIterator, Callable
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -20,6 +20,11 @@ AFFILIATION_SEARCH_INST_NOTE = (
     "Affiliation search requires an institutional Elsevier subscription. "
     "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
 )
+
+# Scopus caps a single search page at 25 entries and the total retrievable
+# window at 5000 (start + count), regardless of how large total_results is.
+PAGE_MAX = 25
+OFFSET_MAX = 5000
 
 
 async def do_scopus_search(
@@ -50,6 +55,118 @@ async def do_scopus_search_affiliations(client: ScopusClient, query: str, count:
         params={"query": query, "count": count},
     )
     return format_affiliation_search_results(raw, query=query)
+
+
+async def _paginate(
+    client: ScopusClient,
+    path: str,
+    query: str,
+    formatter: Callable[..., dict],
+    rows_key: str,
+    id_key: str,
+    max_rows: int,
+    start: int = 0,
+    extra_params: dict[str, Any] | None = None,
+    on_page: Callable[[int, int], None] | None = None,
+) -> AsyncIterator[dict]:
+    """Walk a Scopus offset-paginated endpoint, yielding one row at a time.
+
+    Shared by every `--all` capable search command. Deduplicates on ``id_key``
+    because Scopus can shift a result between pages while a harvest is running.
+    """
+    seen: set[str] = set()
+    emitted = 0
+    offset = start
+    while emitted < max_rows and offset < OFFSET_MAX:
+        count = min(PAGE_MAX, max_rows - emitted, OFFSET_MAX - offset)
+        params: dict[str, Any] = {"query": query, "count": count, "start": offset}
+        if extra_params:
+            params.update(extra_params)
+        page = formatter(await client.request(path, params=params), query=query)
+        rows = page.get(rows_key, [])
+        if not rows:
+            break
+        total = int(page.get("total_results", 0))
+        for row in rows:
+            ident = str(row.get(id_key, ""))
+            if ident and ident in seen:
+                continue
+            if ident:
+                seen.add(ident)
+            yield row
+            emitted += 1
+            if emitted >= max_rows:
+                break
+        offset += len(rows)
+        if on_page is not None:
+            on_page(emitted, total)
+        if total and offset >= total:
+            break
+
+
+def iter_scopus_search(
+    client: ScopusClient,
+    query: str,
+    max_rows: int = 1000,
+    start: int = 0,
+    view: str = "STANDARD",
+    on_page: Callable[[int, int], None] | None = None,
+) -> AsyncIterator[dict]:
+    """Stream every paper matching ``query``, up to ``max_rows``."""
+    return _paginate(
+        client,
+        "/content/search/scopus",
+        query,
+        format_search_results,
+        rows_key="papers",
+        id_key="scopus_id",
+        max_rows=max_rows,
+        start=start,
+        extra_params={"view": view},
+        on_page=on_page,
+    )
+
+
+def iter_scopus_search_authors(
+    client: ScopusClient,
+    query: str,
+    max_rows: int = 1000,
+    start: int = 0,
+    on_page: Callable[[int, int], None] | None = None,
+) -> AsyncIterator[dict]:
+    """Stream every author profile matching ``query``, up to ``max_rows``."""
+    return _paginate(
+        client,
+        "/content/search/author",
+        query,
+        format_author_search_results,
+        rows_key="authors",
+        id_key="author_id",
+        max_rows=max_rows,
+        start=start,
+        on_page=on_page,
+    )
+
+
+def iter_scopus_search_affiliations(
+    client: ScopusClient,
+    query: str,
+    max_rows: int = 1000,
+    start: int = 0,
+    on_page: Callable[[int, int], None] | None = None,
+) -> AsyncIterator[dict]:
+    """Stream every affiliation record matching ``query``, up to ``max_rows``."""
+    return _paginate(
+        client,
+        "/content/search/affiliation",
+        query,
+        format_affiliation_search_results,
+        rows_key="affiliations",
+        id_key="affiliation_id",
+        max_rows=max_rows,
+        start=start,
+        on_page=on_page,
+    )
 
 
 def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:

@@ -24,3 +24,7 @@ class ScopusNotFoundError(ScopusAPIError):
 
 class ScopusRateLimitError(ScopusAPIError):
     """Raised on 429 after all retry attempts are exhausted."""
+
+
+class ScopusNetworkError(ScopusAPIError):
+    """Raised when the request never reached Scopus — DNS, connect, or timeout."""

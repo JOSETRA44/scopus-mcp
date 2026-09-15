@@ -1,17 +1,17 @@
 import asyncio
-import hashlib
 import logging
-import urllib.parse
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
+from .cache import CacheBackend, MemoryCache, cache_key
 from .config import ScopusSettings
 from .exceptions import (
     ScopusAPIError,
     ScopusAuthError,
+    ScopusNetworkError,
     ScopusNotFoundError,
     ScopusRateLimitError,
 )
@@ -27,48 +27,36 @@ class _RateLimitState:
     remaining: int = 9999
     reset_at: datetime | None = None
 
-
-@dataclass
-class _CacheEntry:
-    data: dict[str, Any]
-    expires_at: datetime
-
-
-class _TTLCache:
-    def __init__(self, ttl_seconds: int) -> None:
-        self._ttl = ttl_seconds
-        self._store: dict[str, _CacheEntry] = {}
-
-    def get(self, key: str) -> dict[str, Any] | None:
-        entry = self._store.get(key)
-        if entry is None:
-            return None
-        if datetime.now() >= entry.expires_at:
-            del self._store[key]
-            return None
-        return entry.data
-
-    def set(self, key: str, data: dict[str, Any]) -> None:
-        self._store[key] = _CacheEntry(
-            data=data,
-            expires_at=datetime.now() + timedelta(seconds=self._ttl),
-        )
-
-    def clear_expired(self) -> None:
-        now = datetime.now()
-        expired = [k for k, e in self._store.items() if now >= e.expires_at]
-        for k in expired:
-            del self._store[k]
+    def as_dict(self) -> dict[str, Any]:
+        """Shape reported under the JSON envelope's ``meta.rate_limit``."""
+        return {
+            "limit": self.limit or None,
+            "remaining": self.remaining if self.remaining != 9999 else None,
+            "reset_at": self.reset_at.isoformat() if self.reset_at else None,
+        }
 
 
 class ScopusClient:
-    """Async Scopus API client with caching, rate limiting, and retry logic."""
+    """Async Scopus API client with caching, rate limiting, and retry logic.
 
-    def __init__(self, settings: ScopusSettings) -> None:
+    The cache backend is injected: the MCP server keeps the default in-memory
+    one, while the CLI hands in a disk backend so results survive the process.
+    """
+
+    def __init__(
+        self,
+        settings: ScopusSettings,
+        cache: CacheBackend | None = None,
+        refresh: bool = False,
+    ) -> None:
         self._settings = settings
         self._rate_state = _RateLimitState()
-        self._cache = _TTLCache(settings.cache_ttl)
+        self._cache: CacheBackend = cache if cache is not None else MemoryCache()
+        self._refresh = refresh
         self._http: httpx.AsyncClient | None = None
+        # Per-process counters so the CLI can report `cached` in its envelope.
+        self.hits = 0
+        self.misses = 0
 
     async def __aenter__(self) -> "ScopusClient":
         self._http = httpx.AsyncClient(
@@ -83,6 +71,15 @@ class ScopusClient:
             await self._http.aclose()
             self._http = None
 
+    @property
+    def all_cached(self) -> bool:
+        """True when every request this process made was served from cache."""
+        return self.hits > 0 and self.misses == 0
+
+    @property
+    def rate_limit(self) -> dict[str, Any]:
+        return self._rate_state.as_dict()
+
     def _build_headers(self) -> dict[str, str]:
         headers = {
             "X-ELS-APIKey": self._settings.api_key,
@@ -94,10 +91,21 @@ class ScopusClient:
 
     @staticmethod
     def _cache_key(path: str, params: dict[str, Any] | None) -> str:
-        canonical = path
-        if params:
-            canonical += "?" + urllib.parse.urlencode(sorted(params.items()))
-        return hashlib.sha256(canonical.encode()).hexdigest()
+        # Secrets live in headers, so they never enter the key material.
+        return cache_key(BASE_URL, "GET", path, params)
+
+    def _redact(self, text: str) -> str:
+        """Strip credentials out of an upstream error body.
+
+        Elsevier echoes the offending key back in some error payloads
+        ("APIKey <key> with IP address ... is unauthorized"), and that body is
+        quoted into the error message an agent parses out of the JSON envelope
+        and writes to a log. Redact before it ever leaves the client.
+        """
+        for secret in (self._settings.api_key, self._settings.inst_token):
+            if secret:
+                text = text.replace(secret, "***")
+        return text
 
     def _update_rate_state(self, response: httpx.Response) -> None:
         try:
@@ -109,13 +117,16 @@ class ScopusClient:
             if remaining:
                 self._rate_state.remaining = int(remaining)
             if reset:
-                self._rate_state.reset_at = datetime.fromtimestamp(int(reset))
+                self._rate_state.reset_at = datetime.fromtimestamp(
+                    int(reset), tz=timezone.utc
+                )
         except (ValueError, TypeError):
             pass
 
     async def _wait_for_rate_limit(self) -> None:
         if self._rate_state.remaining <= 0 and self._rate_state.reset_at:
-            wait = (self._rate_state.reset_at - datetime.now()).total_seconds()
+            now = datetime.now(tz=self._rate_state.reset_at.tzinfo)
+            wait = (self._rate_state.reset_at - now).total_seconds()
             if wait > 0:
                 logger.warning("Rate limit reached; sleeping %.1fs until reset.", wait + 1)
                 await asyncio.sleep(wait + 1)
@@ -133,10 +144,13 @@ class ScopusClient:
         assert self._http is not None, "ScopusClient must be used as async context manager"
 
         key = self._cache_key(path, params)
-        cached = self._cache.get(key)
-        if cached is not None:
-            logger.debug("Cache hit: %s", path)
-            return cached
+        if not self._refresh:
+            cached = self._cache.get(key)
+            if cached is not None:
+                logger.debug("Cache hit: %s", path)
+                self.hits += 1
+                return cached
+        self.misses += 1
 
         await self._wait_for_rate_limit()
 
@@ -145,15 +159,15 @@ class ScopusClient:
             try:
                 response = await self._http.get(path, params=params)
             except httpx.TimeoutException as exc:
-                raise ScopusAPIError(f"Request timed out after 30s: {path}") from exc
-            except httpx.ConnectError as exc:
-                raise ScopusAPIError(f"Could not connect to Scopus API: {exc}") from exc
+                raise ScopusNetworkError(f"Request timed out after 30s: {path}") from exc
+            except httpx.TransportError as exc:
+                raise ScopusNetworkError(f"Could not connect to Scopus API: {exc}") from exc
 
             self._update_rate_state(response)
 
             if response.status_code == 200:
                 data: dict[str, Any] = response.json()
-                self._cache.set(key, data)
+                self._cache.set(key, data, self._settings.cache_ttl, status=200)
                 return data
 
             if response.status_code == 429:
@@ -170,6 +184,7 @@ class ScopusClient:
                 continue
 
             if response.status_code in (401, 403):
+                # Never cached — an auth failure must not poison later runs.
                 raise ScopusAuthError(
                     f"Scopus authentication failed ({response.status_code}). "
                     "Check your SCOPUS_API_KEY and SCOPUS_INST_TOKEN.",
@@ -183,7 +198,8 @@ class ScopusClient:
                 )
 
             raise ScopusAPIError(
-                f"Scopus API error {response.status_code}: {response.text[:200]}",
+                f"Scopus API error {response.status_code}: "
+                f"{self._redact(response.text)[:200]}",
                 status_code=response.status_code,
             )
 

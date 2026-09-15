@@ -92,7 +92,14 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
             "within the specified date range. Useful for tracking research impact "
             "and citation trends over time.\n\n"
             "Requires a Scopus ID. Use scopus_search or scopus_get_abstract first "
-            "to obtain the scopus_id."
+            "to obtain the scopus_id.\n\n"
+            "Prefer scopus_get_citation_count when you only need one total - it is a "
+            "single cheap lookup. Use this when the *shape* of the citation curve over "
+            "time matters.\n\n"
+            "**Access:** needs SCOPUS_INST_TOKEN *and* a request from a subscribing "
+            "institution network, on top of SCOPUS_API_KEY. Without both, Elsevier "
+            "returns AUTHENTICATION_ERROR even with a valid key - a licensing "
+            "restriction, so retrying will not help."
         ),
     )
     async def scopus_get_citations_overview(
