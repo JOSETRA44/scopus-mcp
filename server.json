@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.JOSETRA44/scopus-mcp",
+  "title": "Scopus",
+  "description": "Search Elsevier Scopus: papers, abstracts, author h-index and year-by-year citation timelines. Requires a free Elsevier API key.",
+  "version": "0.1.0",
+  "websiteUrl": "https://github.com/JOSETRA44/scopus-mcp#readme",
+  "repository": {
+    "url": "https://github.com/JOSETRA44/scopus-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "scopus-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SCOPUS_API_KEY",
+          "description": "Elsevier API key, free from https://dev.elsevier.com/. Required.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SCOPUS_INST_TOKEN",
+          "description": "Institutional token. Required only for author profiles and citation overviews, and only works from a subscribing institution's network.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
