@@ -1,37 +1,26 @@
 # Changelog
 
-All notable changes to this project are documented here.
+## Unreleased
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
-this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- Guided `scopus setup` in English/Spanish with hidden secret input, explicit
+  save, private atomic user configuration, environment import and status display.
+- Typed MCP outputs and read-only annotations; services shared with the CLI.
+- Five additional MCP tools: batch abstracts, access diagnostics, references,
+  citing documents and bounded corpus analysis (12 tools in total).
+- Correct empty-result handling, unknown metrics, citation years and review dates.
+- Per-API quotas, bounded Retry-After/backoff and transient HTTP retries.
+- Credential-isolated caches, bounded memory and atomic disk writes.
+- Author/institution pagination and explicit corpus completeness.
+- RIS, BibTeX and CSL-JSON export; reproducibility records via `--record`.
+- Retrieval provenance distinct from serving time.
+- CI matrix, transport tests, packaging smoke checks and regression coverage.
 
-## [Unreleased]
+### Compatibility notes
 
-## [0.1.0] - 2026-08-22
-
-### Added
-
-- Conformance with [`ARSENAL-SPEC.md`](../ARSENAL-SPEC.md), the CLI contract shared
-  by every research server in this workspace:
-  - Five output formats: `table`, `json`, `jsonl`, `csv`, `md`.
-  - A stable JSON envelope (`ok`, `command`, `source`, `fetched_at`, `cached`,
-    `count`, `meta`, `data`, `rows`) and a matching error envelope carrying an
-    actionable `hint`.
-  - Seven documented exit codes, so a script can branch on *why* a call failed.
-  - A disk cache shared across invocations, with `--refresh`, `--no-cache` and a
-    `cache stats|clear|path` subcommand.
-  - `describe --json`: a machine-readable manifest derived from the parser
-    itself, so it cannot drift from the real commands.
-  - UTF-8 output forced on Windows consoles, which default to a code page that
-    cannot encode accented text.
-- Offset pagination with quota reporting in the envelope's meta.
-- `server.json` for the official MCP registry, plus `LICENSE`, `SECURITY.md` and
-  `CONTRIBUTING.md`.
-
-### Changed
-
-- Data goes to stdout and notes to stderr, so piping to `jq` always yields
-  parseable output.
-
-[Unreleased]: https://github.com/JOSETRA44/scopus-mcp/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/JOSETRA44/scopus-mcp/releases/tag/v0.1.0
+- MCP SDK minimum is now 1.28; v2 migration is separate.
+- Missing metrics are null, not zero; malformed upstream payloads are errors.
+- Citation range defaults now include the current UTC year.
+- Cache entries from earlier versions are not reused across credential namespaces.
+- `check` reports endpoints independently instead of grouped capabilities.
+- Existing command names, general output formats and stdio startup are retained.
+- Credentials are stored locally with restricted permissions, not encryption.
