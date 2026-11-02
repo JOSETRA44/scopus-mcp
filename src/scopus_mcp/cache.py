@@ -8,18 +8,20 @@ repeated research query instant across runs.
 Both backends implement the same ``CacheBackend`` Protocol, so ``ScopusClient``
 neither knows nor cares which one it was handed.
 
-Security note: the cache key is derived from (base_url, method, path, sorted
-query params) only. The Scopus API key and institutional token travel in the
-``X-ELS-APIKey`` / ``X-ELS-Insttoken`` *headers*, so they are never part of the
-key material and are never written into a cache file.
+Credentials travel in headers only. The client namespaces request keys with
+a credential digest so users with different entitlements never share data.
+Raw credentials are never written into a cache file.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 import urllib.parse
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -64,19 +66,29 @@ class CacheBackend(Protocol):
 class MemoryCache:
     """In-process cache. Fast, ephemeral — used by the long-lived MCP server."""
 
-    def __init__(self) -> None:
-        self._store: dict[str, dict[str, Any]] = {}
+    def __init__(self, max_entries: int = 1024) -> None:
+        self.max_entries = max(1, max_entries)
+        self._store: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
     def get(self, key: str) -> Any | None:
+        entry = self.get_entry(key)
+        return entry["body"] if entry else None
+
+    def get_entry(self, key: str) -> dict[str, Any] | None:
         entry = self._store.get(key)
         if entry and time.time() < entry["expires"]:
-            return entry["body"]
+            self._store.move_to_end(key)
+            return entry
         self._store.pop(key, None)
         return None
 
     def set(self, key: str, value: Any, ttl: int, status: int = 200) -> None:
-        if ttl > 0:
-            self._store[key] = {"body": value, "expires": time.time() + ttl}
+        if ttl > 0 and 200 <= status < 300:
+            now = time.time()
+            self._store[key] = {"body": value, "expires": now + ttl, "fetched_at": _iso(now)}
+            self._store.move_to_end(key)
+            while len(self._store) > self.max_entries:
+                self._store.popitem(last=False)
 
 
 class NullCache:
@@ -105,6 +117,10 @@ class DiskCache:
         return self.dir / f"{key}.json"
 
     def get(self, key: str) -> Any | None:
+        entry = self.get_entry(key)
+        return entry.get("body") if entry else None
+
+    def get_entry(self, key: str) -> dict[str, Any] | None:
         path = self._path(key)
         if not path.exists():
             return None
@@ -112,11 +128,16 @@ class DiskCache:
             entry = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return None
-        if time.time() >= entry.get("expires", 0):
-            # Expired — clean it up opportunistically so `cache stats` stays honest.
-            path.unlink(missing_ok=True)
+        if not isinstance(entry, dict) or not isinstance(entry.get("expires"), (int, float)):
             return None
-        return entry.get("body")
+        if time.time() >= entry["expires"]:
+            # Expired — clean it up opportunistically so `cache stats` stays honest.
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return None
+        return entry
 
     def set(self, key: str, value: Any, ttl: int, status: int = 200) -> None:
         if ttl <= 0 or not (200 <= status < 300):
@@ -129,13 +150,25 @@ class DiskCache:
             "status": status,
             "body": value,
         }
+        temp_path = None
         try:
-            self._path(key).write_text(
-                json.dumps(entry, ensure_ascii=False), encoding="utf-8"
-            )
+            payload = json.dumps(entry, ensure_ascii=False)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.dir,
+                                             suffix=".tmp", delete=False) as handle:
+                temp_path = Path(handle.name)
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, self._path(key))
         except (OSError, TypeError):
             # Caching is best-effort; never let a cache write break a query.
             pass
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     # ── `cache` subcommand support ──────────────────────────────────────────
 
@@ -149,6 +182,8 @@ class DiskCache:
                 size += path.stat().st_size
                 entry = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(entry, dict) or not isinstance(entry.get("expires"), (int, float)):
                 continue
             if now >= entry.get("expires", 0):
                 expired += 1

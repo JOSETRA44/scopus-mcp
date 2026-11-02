@@ -287,17 +287,16 @@ class TestTheApiKeyNeverLeaks:
         assert FAKE_API_KEY not in str(request.url)
         assert FAKE_INST_TOKEN not in str(request.url)
 
-    def test_two_different_api_keys_share_one_cache_entry(
+    def test_two_different_api_keys_have_isolated_cache_entries(
         self, cli, fake_scopus, settings, cache_dir: Path
     ) -> None:
-        """The strongest statement that the key is absent from the key material:
-        change the key, and the very same cached response still answers."""
+        """Changing credentials cannot reuse data from another entitlement."""
         api = fake_scopus(_one_paper)
         cli("search", "TITLE(x)", "-f", "json")
         settings.api_key = "a-completely-different-key"
         cli("search", "TITLE(x)", "-f", "json")
-        assert api.call_count == 1
-        assert len(_cache_files(cache_dir)) == 1
+        assert api.call_count == 2
+        assert len(_cache_files(cache_dir)) == 2
 
     def test_no_cache_file_name_or_body_contains_the_key(
         self, cli, fake_scopus, cache_dir: Path
