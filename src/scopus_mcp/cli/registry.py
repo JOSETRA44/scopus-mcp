@@ -28,6 +28,11 @@ class CommandSpec:
 
 
 COMMANDS: dict[str, CommandSpec] = {
+    "setup": CommandSpec(
+        name="setup", title="Configuration", rows_from=R.rows_cache,
+        row_fields=R.CACHE_FIELDS,
+        examples=["scopus setup", "scopus setup --language es", "scopus setup --show -f json"],
+    ),
     "search": CommandSpec(
         name="search",
         title="Papers",

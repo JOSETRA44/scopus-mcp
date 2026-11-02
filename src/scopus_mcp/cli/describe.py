@@ -18,7 +18,7 @@ from .render import EXIT_CODES, FORMATS
 SOURCE = {
     "api": "Elsevier Scopus",
     "base_url": "https://api.elsevier.com",
-    "auth": "required (SCOPUS_API_KEY; SCOPUS_INST_TOKEN for author/citation endpoints)",
+    "auth": "API key required; use scopus setup or SCOPUS_API_KEY. Endpoint access depends on Elsevier entitlements.",
 }
 
 _TYPE_NAMES = {int: "integer", float: "number", str: "string"}

@@ -31,7 +31,7 @@ def add_global_flags(parser: argparse.ArgumentParser, sub: bool = False) -> None
         return SUPPRESS if sub else value
 
     parser.add_argument("-f", "--format", choices=list(FORMATS), default=default("table"),
-                        help="Output format: table | json | jsonl | csv | md (default: table)")
+                        help="Output format (default: table); RIS/BibTeX/CSL-JSON for papers")
     parser.add_argument("-o", "--output", metavar="FILE", default=default(None),
                         help="Write output to FILE instead of stdout")
     parser.add_argument("-q", "--quiet", action="store_true", default=default(False),
@@ -43,6 +43,8 @@ def add_global_flags(parser: argparse.ArgumentParser, sub: bool = False) -> None
     parser.add_argument("--no-cache", action="store_true", dest="no_cache",
                         default=default(False),
                         help="Neither read nor write the disk cache")
+    parser.add_argument("--record", metavar="FILE", default=default(None),
+                        help="Save a reproducibility record (query, retrieval times, completeness; no credentials)")
 
 
 def _add_json_alias(parser: argparse.ArgumentParser) -> None:
@@ -109,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search_authors.add_argument("query", help="Author search query, e.g. AUTHLASTNAME(Smith)")
     p_search_authors.add_argument("--count", type=int, default=10, help="Results per page, 1-25")
+    p_search_authors.add_argument("--start", type=int, default=0, help="Pagination offset")
 
     p_search_affil = new(
         "search-affiliations",
@@ -117,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search_affil.add_argument("query", help="Affiliation search query, e.g. AFFIL(MIT)")
     p_search_affil.add_argument("--count", type=int, default=10, help="Results per page, 1-25")
+    p_search_affil.add_argument("--start", type=int, default=0, help="Pagination offset")
 
     p_citation_count = new(
         "citation-count", "Get total citation count for a paper (requires SCOPUS_INST_TOKEN)"
@@ -128,9 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_citations = new("citations", "Year-by-year citation timeline (requires SCOPUS_INST_TOKEN)")
     p_citations.add_argument("scopus_id", help="Scopus numeric ID of the paper")
     p_citations.add_argument("--start-year", type=int, default=2000, help="First year of the range")
-    p_citations.add_argument("--end-year", type=int, default=2025, help="Last year of the range")
+    p_citations.add_argument("--end-year", type=int, default=None, help="Last year of the range (default: current year)")
 
     new("check", "Validate API key and show which tools are available")
+    p_setup = new("setup", "Configure Scopus with a guided, private API key prompt")
+    p_setup.add_argument("--language", choices=["en", "es"], help="Wizard language (default: system language)")
+    p_setup.add_argument("--from-env", action="store_true", help="Save SCOPUS_API_KEY and optional SCOPUS_INST_TOKEN without prompting")
+    p_setup.add_argument("--force", action="store_true", help="Allow --from-env to replace saved credentials")
+    p_setup.add_argument("--show", action="store_true", help="Show saved configuration status and path, never credentials")
+    p_setup.add_argument("--check", action="store_true", help="After saving, test each endpoint (uses API quota)")
 
     p_cache = new("cache", "Inspect or clear the persistent response cache")
     p_cache.add_argument(
