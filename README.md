@@ -1,3 +1,5 @@
+<img width="1600" height="500" alt="SCOPUS-MCP _ Minimal GitHub banner · 1600×500" src="https://github.com/user-attachments/assets/20cf9e90-f9cf-49e6-8997-cc5662e6d84e" />
+
 [![MCP Badge](https://lobehub.com/badge/mcp/josetra44-scopus-mcp)](https://lobehub.com/mcp/josetra44-scopus-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
