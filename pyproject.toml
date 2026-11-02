@@ -27,7 +27,7 @@ dependencies = [
     # mcp 2.0 movió mcp.server.fastmcp; con >=1.0.0 sin techo, una
     # instalación nueva desde PyPI resuelve a 2.x y la herramienta
     # falla al importar. Se levanta el techo cuando se migre el server.
-    "mcp>=1.0.0,<2.0.0",
+    "mcp>=1.28.0,<2.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
@@ -58,7 +58,28 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "respx>=0.21.0",
+    "ruff>=0.11.0",
+    "mypy>=1.15.0",
+    "build>=1.2.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+# Start with correctness checks; avoid a cosmetic rewrite of existing code.
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.11"
+# Grow this boundary as the CLI and MCP adapters acquire typed result models.
+files = ["src/scopus_mcp/cache.py", "src/scopus_mcp/client.py", "src/scopus_mcp/exceptions.py"]
+follow_imports = "silent"
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --group dev
+      - run: uv run pytest
+      - run: uv run ruff check src tests
+      - run: uv run mypy
+      - name: Build sdist and wheel in isolated environments
+        run: uv run python -m build
+      - name: Install the wheel and exercise public entry points
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import venv
+
+          wheel = next(Path('dist').glob('*.whl')).resolve()
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              venv.create(root / 'env', with_pip=True)
+              scripts = root / 'env' / ('Scripts' if os.name == 'nt' else 'bin')
+              python = scripts / ('python.exe' if os.name == 'nt' else 'python')
+              subprocess.run([str(python), '-m', 'pip', 'install', str(wheel)], check=True)
+              for command in ('scopus', 'scps', 'scopus-mcp'):
+                  executable = scripts / (command + ('.exe' if os.name == 'nt' else ''))
+                  subprocess.run([str(executable), '--version'], cwd=root, check=True)
+              subprocess.run([str(scripts / ('scopus.exe' if os.name == 'nt' else 'scopus')),
+                              'setup', '--help'], cwd=root, check=True)
