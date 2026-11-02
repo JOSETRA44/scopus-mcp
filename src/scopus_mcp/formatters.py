@@ -5,6 +5,8 @@ No side effects, no network calls — fully unit-testable with fixture data.
 
 from typing import Any
 
+from .exceptions import ScopusAPIError, ScopusNotFoundError
+
 
 def _safe_get(obj: Any, *keys: str | int, default: Any = None) -> Any:
     """Safely traverse nested dicts/lists without raising KeyError/TypeError."""
@@ -16,6 +18,53 @@ def _safe_get(obj: Any, *keys: str | int, default: Any = None) -> Any:
     return obj if obj is not None else default
 
 
+def _optional_count(value: Any) -> int | None:
+    """Missing metrics remain unknown; malformed metrics are upstream errors."""
+    if value is None or value == "":
+        return None
+    try:
+        result = int(value)
+        if result < 0:
+            raise ValueError
+        return result
+    except (TypeError, ValueError) as exc:
+        raise ScopusAPIError("Scopus returned an invalid numeric metric.") from exc
+
+
+def _open_access(value: Any) -> bool | None:
+    if value in ("1", 1, True):
+        return True
+    if value in ("0", 0, False):
+        return False
+    return None
+
+
+def _search_entries(sr: dict) -> list[dict]:
+    entries = sr.get("entry") or []
+    if isinstance(entries, dict):
+        entries = [entries]
+    if not isinstance(entries, list):
+        raise ScopusAPIError("Scopus returned malformed search entries.")
+    result = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ScopusAPIError("Scopus returned a malformed search entry.")
+        if "error" in entry:
+            if (str(sr.get("opensearch:totalResults")) == "0"
+                    and str(entry["error"]).strip().lower() == "result set was empty"):
+                continue
+            raise ScopusAPIError("Scopus returned an error in its search results.")
+        result.append(entry)
+    return result
+
+
+def _search_root(raw: dict) -> dict:
+    root = raw.get("search-results")
+    if not isinstance(root, dict) or _optional_count(root.get("opensearch:totalResults")) is None:
+        raise ScopusAPIError("Scopus returned an incomplete search response; result count is unknown.")
+    return root
+
+
 def _strip_scopus_id(raw_id: str) -> str:
     """Convert 'SCOPUS_ID:85123456789' → '85123456789'."""
     return raw_id.split(":")[-1] if ":" in raw_id else raw_id
@@ -23,6 +72,8 @@ def _strip_scopus_id(raw_id: str) -> str:
 
 def _find_link(links: list[dict], rel: str) -> str | None:
     """Find href for a link with the given @ref value."""
+    if isinstance(links, dict):
+        links = [links]
     for link in links or []:
         if link.get("@ref") == rel:
             return link.get("@href")
@@ -31,14 +82,12 @@ def _find_link(links: list[dict], rel: str) -> str | None:
 
 def format_search_results(raw: dict[str, Any], query: str = "") -> dict[str, Any]:
     """Transform /content/search/scopus response into a flat, AI-friendly structure."""
-    sr = _safe_get(raw, "search-results", default={})
+    sr = _search_root(raw)
     total = int(_safe_get(sr, "opensearch:totalResults", default=0))
     items_per_page = int(_safe_get(sr, "opensearch:itemsPerPage", default=0))
     start_index = int(_safe_get(sr, "opensearch:startIndex", default=0))
 
-    entries = _safe_get(sr, "entry", default=[])
-    if isinstance(entries, dict):
-        entries = [entries]
+    entries = _search_entries(sr)
 
     papers = []
     for e in entries:
@@ -52,8 +101,8 @@ def format_search_results(raw: dict[str, Any], query: str = "") -> dict[str, Any
             "first_author": _safe_get(e, "dc:creator", default=""),
             "publication": _safe_get(e, "prism:publicationName", default=""),
             "cover_date": _safe_get(e, "prism:coverDate", default=""),
-            "cited_by_count": int(_safe_get(e, "citedby-count", default=0)),
-            "open_access": _safe_get(e, "openaccess", default="0") == "1",
+            "cited_by_count": _optional_count(_safe_get(e, "citedby-count")),
+            "open_access": _open_access(_safe_get(e, "openaccess")),
             "scopus_url": _find_link(links, "scopus"),
         }
         doi = _safe_get(e, "prism:doi")
@@ -68,7 +117,30 @@ def format_search_results(raw: dict[str, Any], query: str = "") -> dict[str, Any
         page_range = _safe_get(e, "prism:pageRange")
         if page_range:
             paper["page_range"] = page_range
-        papers.append({k: v for k, v in paper.items() if v not in (None, "", [])})
+        if e.get("prism:aggregationType"):
+            paper["aggregation_type"] = e["prism:aggregationType"]
+        if e.get("subtypeDescription"):
+            paper["document_type"] = e["subtypeDescription"]
+        author_list = e.get("author") or []
+        if isinstance(author_list, dict):
+            author_list = [author_list]
+        if author_list:
+            paper["authors"] = [
+                {"name": author.get("authname") or author.get("indexed-name") or
+                 ", ".join(filter(None, [author.get("surname"), author.get("given-name") or author.get("initials")])),
+                 "scopus_author_id": author.get("authid")}
+                for author in author_list if isinstance(author, dict)
+            ]
+        affiliation_list = e.get("affiliation") or []
+        if isinstance(affiliation_list, dict):
+            affiliation_list = [affiliation_list]
+        if affiliation_list:
+            paper["affiliations"] = [
+                {"affiliation_id": affiliation.get("afid"), "name": affiliation.get("affilname"),
+                 "city": affiliation.get("affiliation-city"), "country": affiliation.get("affiliation-country")}
+                for affiliation in affiliation_list if isinstance(affiliation, dict)
+            ]
+        papers.append({k: v for k, v in paper.items() if v not in ("", [])})
 
     result: dict[str, Any] = {
         "total_results": total,
@@ -86,6 +158,8 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
     """Transform /content/abstract/* response into a structured paper record."""
     root = _safe_get(raw, "abstracts-retrieval-response", default={})
     core = _safe_get(root, "coredata", default={})
+    if not isinstance(core, dict) or not core:
+        raise ScopusNotFoundError("No abstract record found in the Scopus response.")
 
     raw_id = _safe_get(core, "dc:identifier", default="")
     scopus_id = _strip_scopus_id(raw_id)
@@ -150,8 +224,8 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
         "abstract": _safe_get(core, "dc:description", default=""),
         "publication": _safe_get(core, "prism:publicationName", default=""),
         "cover_date": _safe_get(core, "prism:coverDate", default=""),
-        "cited_by_count": int(_safe_get(core, "citedby-count", default=0)),
-        "open_access": _safe_get(core, "openaccess", default="0") == "1",
+        "cited_by_count": _optional_count(_safe_get(core, "citedby-count")),
+        "open_access": _open_access(_safe_get(core, "openaccess")),
         "authors": authors,
         "keywords": keywords,
         "subject_areas": subject_areas,
@@ -178,6 +252,10 @@ def format_abstract(raw: dict[str, Any]) -> dict[str, Any]:
     language = _safe_get(root, "language", "@xml:lang")
     if language:
         result["language"] = language
+    if core.get("prism:aggregationType"):
+        result["aggregation_type"] = core["prism:aggregationType"]
+    if core.get("subtypeDescription"):
+        result["document_type"] = core["subtypeDescription"]
 
     # META view: affiliations are at root level (not under authors)
     if not result.get("authors") or all(not a.get("affiliation") for a in result.get("authors", [])):
@@ -205,6 +283,8 @@ def format_author_profile(raw: dict[str, Any]) -> dict[str, Any]:
         root = root[0] if root else {}
 
     core = _safe_get(root, "coredata", default={})
+    if not isinstance(core, dict) or not core:
+        raise ScopusNotFoundError("No author record found in the Scopus response.")
     metrics = _safe_get(root, "h-index", default=None)
     profile = _safe_get(root, "author-profile", default={})
 
@@ -246,10 +326,10 @@ def format_author_profile(raw: dict[str, Any]) -> dict[str, Any]:
         "surname": surname,
         "given_name": given,
         "initials": initials,
-        "h_index": int(metrics) if metrics is not None else None,
-        "document_count": int(_safe_get(core, "document-count", default=0)),
-        "cited_by_count": int(_safe_get(core, "cited-by-count", default=0)),
-        "citation_count": int(_safe_get(core, "citation-count", default=0)),
+        "h_index": _optional_count(metrics),
+        "document_count": _optional_count(_safe_get(core, "document-count")),
+        "cited_by_count": _optional_count(_safe_get(core, "cited-by-count")),
+        "citation_count": _optional_count(_safe_get(core, "citation-count")),
         "subject_areas": subject_areas,
     }
     if affiliation:
@@ -265,11 +345,9 @@ def format_author_profile(raw: dict[str, Any]) -> dict[str, Any]:
 
 def format_author_search_results(raw: dict[str, Any], query: str = "") -> dict[str, Any]:
     """Transform /content/search/author response."""
-    sr = _safe_get(raw, "search-results", default={})
+    sr = _search_root(raw)
     total = int(_safe_get(sr, "opensearch:totalResults", default=0))
-    entries = _safe_get(sr, "entry", default=[])
-    if isinstance(entries, dict):
-        entries = [entries]
+    entries = _search_entries(sr)
 
     authors = []
     for e in entries:
@@ -278,7 +356,7 @@ def format_author_search_results(raw: dict[str, Any], query: str = "") -> dict[s
             "name": _safe_get(e, "preferred-name", "surname", default="") + ", " + (
                 _safe_get(e, "preferred-name", "given-name") or _safe_get(e, "preferred-name", "initials", default="")
             ),
-            "document_count": int(_safe_get(e, "document-count", default=0)),
+            "document_count": _optional_count(_safe_get(e, "document-count")),
         }
         affil_name = _safe_get(e, "affiliation-current", "affiliation-name")
         if affil_name:
@@ -295,6 +373,8 @@ def format_author_search_results(raw: dict[str, Any], query: str = "") -> dict[s
         "total_results": total,
         "showing": len(authors),
         "authors": authors,
+        "start_index": int(sr.get("opensearch:startIndex", 0)),
+        "items_per_page": int(sr.get("opensearch:itemsPerPage", len(authors))),
     }
     if query:
         result["query"] = query
@@ -303,11 +383,9 @@ def format_author_search_results(raw: dict[str, Any], query: str = "") -> dict[s
 
 def format_affiliation_search_results(raw: dict[str, Any], query: str = "") -> dict[str, Any]:
     """Transform /content/search/affiliation response."""
-    sr = _safe_get(raw, "search-results", default={})
+    sr = _search_root(raw)
     total = int(_safe_get(sr, "opensearch:totalResults", default=0))
-    entries = _safe_get(sr, "entry", default=[])
-    if isinstance(entries, dict):
-        entries = [entries]
+    entries = _search_entries(sr)
 
     affiliations = []
     for e in entries:
@@ -317,17 +395,19 @@ def format_affiliation_search_results(raw: dict[str, Any], query: str = "") -> d
             "name": _safe_get(e, "affiliation-name", default=""),
             "city": _safe_get(e, "city", default=""),
             "country": _safe_get(e, "country", default=""),
-            "document_count": int(_safe_get(e, "document-count", default=0)),
+            "document_count": _optional_count(_safe_get(e, "document-count")),
         }
         scopus_url = _find_link(links, "scopus-affiliation")
         if scopus_url:
             affil["scopus_url"] = scopus_url
-        affiliations.append({k: v for k, v in affil.items() if v not in (None, "", 0)})
+        affiliations.append({k: v for k, v in affil.items() if v != ""})
 
     result: dict[str, Any] = {
         "total_results": total,
         "showing": len(affiliations),
         "affiliations": affiliations,
+        "start_index": int(sr.get("opensearch:startIndex", 0)),
+        "items_per_page": int(sr.get("opensearch:itemsPerPage", len(affiliations))),
     }
     if query:
         result["query"] = query
@@ -340,14 +420,14 @@ def format_citation_count(raw: dict[str, Any]) -> dict[str, Any]:
     if isinstance(results, dict):
         results = [results]
     if not results:
-        return {"error": "No citation data found"}
+        raise ScopusNotFoundError("No citation data found for this record.")
 
     first = results[0]
     return {
         "scopus_id": _safe_get(first, "scopus_id", default=""),
         "doi": _safe_get(first, "doi", default=None),
-        "cited_by_count": int(_safe_get(first, "citationcount", default=0)),
-        "self_citation_count": _safe_get(first, "selfcitationcount"),
+        "cited_by_count": _optional_count(_safe_get(first, "citationcount")),
+        "self_citation_count": _optional_count(_safe_get(first, "selfcitationcount")),
     }
 
 
@@ -356,7 +436,9 @@ def format_citations_overview(raw: dict[str, Any]) -> dict[str, Any]:
     root = _safe_get(raw, "abstract-citations-response", default={})
     cite_info = _safe_get(root, "citeInfoMatrix", "citeInfoMatrixXML", "citationMatrix", default={})
 
-    total = int(_safe_get(root, "citeInfoMatrix", "citeInfoMatrixXML", "citationMatrix", "citeCount", default=0))
+    if not isinstance(cite_info, dict) or not cite_info:
+        raise ScopusNotFoundError("No citation timeline data found for this record.")
+    total = _optional_count(cite_info.get("citeCount"))
 
     # Year-by-year columns
     col_headers = _safe_get(cite_info, "columnHeading", default=[])
@@ -367,13 +449,13 @@ def format_citations_overview(raw: dict[str, Any]) -> dict[str, Any]:
     row = _safe_get(cite_info, "citeCountHeader", default={})
     if isinstance(row, dict):
         row = [row]
-    per_year: dict[str, int] = {}
+    per_year: dict[str, int | None] = {}
     if row and years:
         counts_raw = _safe_get(row[0], "columnValue", default=[])
         if isinstance(counts_raw, (str, int)):
             counts_raw = [counts_raw]
-        for year, count in zip(years, counts_raw):
-            per_year[year] = int(count or 0)
+        for index, year in enumerate(years):
+            per_year[year] = _optional_count(counts_raw[index]) if index < len(counts_raw) else None
 
     return {
         "total_citations": total,

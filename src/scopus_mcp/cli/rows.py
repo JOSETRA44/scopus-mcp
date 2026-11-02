@@ -36,8 +36,9 @@ PAPER_FIELDS = [
 def project_paper(paper: dict) -> Row:
     row = _pick(paper, PAPER_FIELDS)
     row["year"] = (paper.get("cover_date") or "")[:4] or None
-    row["open_access"] = bool(paper.get("open_access"))
-    row["cited_by_count"] = int(paper.get("cited_by_count") or 0)
+    row["open_access"] = paper.get("open_access")
+    count = paper.get("cited_by_count")
+    row["cited_by_count"] = int(count) if count is not None else None
     return row
 
 
@@ -165,11 +166,14 @@ def search_meta(result: dict) -> dict[str, Any]:
         "total_results": result.get("total_results"),
         "start_index": result.get("start_index"),
         "items_per_page": result.get("items_per_page"),
+        "next_start": result.get("next_start"),
+        "truncated": result.get("truncated"),
+        "stop_reason": result.get("stop_reason"),
     }
 
 
 def total_meta(result: dict) -> dict[str, Any]:
-    return {"query": result.get("query"), "total_results": result.get("total_results")}
+    return search_meta(result)
 
 
 def no_meta(result: dict) -> dict[str, Any]:

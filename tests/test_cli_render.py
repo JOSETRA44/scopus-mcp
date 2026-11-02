@@ -191,6 +191,7 @@ def test_color_is_disabled_when_the_stream_is_not_a_tty(
 
 ENVELOPE_KEYS = {
     "ok", "command", "source", "fetched_at", "cached", "count", "meta", "data", "rows",
+    "retrieved_at", "served_at",
 }
 
 
@@ -323,7 +324,7 @@ def test_every_format_can_encode_accented_output_as_utf8_bytes() -> None:
         emitter = Emitter(fmt=fmt, no_color=True)
         buf = io.StringIO()
         emitter.write = buf.write  # type: ignore[method-assign]
-        emitter.emit("search", ACCENTED)
+        emitter.emit("search", [{"title": row["country"], **row} for row in ACCENTED])
         assert "Perú".encode("utf-8") in buf.getvalue().encode("utf-8")
 
 
