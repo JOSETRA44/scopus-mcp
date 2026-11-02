@@ -16,11 +16,11 @@ from typing import Any, AsyncIterator, Callable
 from ..cache import DiskCache, build_cache, default_cache_dir
 from ..client import ScopusClient
 from ..config import ScopusSettings, get_settings
-from ..exceptions import ScopusAPIError, ScopusAuthError, ScopusConfigError
-from ..tools.abstract import do_get_abstract
-from ..tools.author import do_get_author
-from ..tools.citations import do_get_citation_count, do_get_citations_overview
-from ..tools.search import (
+from ..exceptions import ScopusConfigError
+from ..services.abstract import do_get_abstract
+from ..services.author import do_get_author
+from ..services.citations import do_get_citation_count, do_get_citations_overview
+from ..services.search import (
     do_scopus_search,
     do_scopus_search_affiliations,
     do_scopus_search_authors,
@@ -32,17 +32,17 @@ from .describe import build_manifest, manifest_rows
 from .errors import classify
 from .parser import build_parser, get_version
 from .registry import COMMANDS
+from .provenance import write_record
+from ..services.diagnostics import diagnose
 from .render import (
+    BIBLIOGRAPHIC_FORMATS,
     EXIT_API,
     EXIT_AUTH,
-    EXIT_NETWORK,
-    EXIT_NOT_FOUND,
     EXIT_OK,
     EXIT_USAGE,
     Emitter,
     force_utf8,
     render_jsonl,
-    render_table,
     to_json,
 )
 from .rows import project_affiliation, project_author, project_paper
@@ -98,44 +98,11 @@ def _cmd_describe(args: argparse.Namespace, emitter: Emitter) -> int:
 
 # ── Live commands ───────────────────────────────────────────────────────────
 
-async def _probe(coro: Any) -> str:
-    """Run a cheap live call and classify the result for the capability report."""
-    try:
-        await coro
-        return "ok"
-    except ScopusAuthError:
-        return "requires SCOPUS_INST_TOKEN"
-    except ScopusAPIError as exc:
-        return f"FAIL: {exc}"
-
-
 async def _cmd_check(client: ScopusClient, settings: ScopusSettings) -> dict[str, Any]:
-    masked = (
-        f"{settings.api_key[:8]}...{settings.api_key[-4:]}"
-        if len(settings.api_key) > 12
-        else "****"
-    )
-    # Live probes reflect the *actual* current entitlements of this API key —
-    # Elsevier's per-endpoint access tiers vary independently of each other,
-    # so a static guess table would be misleading.
-    capabilities = {
-        "search": await _probe(do_scopus_search(client, "TITLE(test)", count=1)),
-        "abstract": "adaptive — tries full view, falls back to metadata-only per paper",
-        "author / search-authors": await _probe(
-            do_scopus_search_authors(client, "AUTHLASTNAME(Smith)", count=1)
-        ),
-        "search-affiliations": await _probe(
-            do_scopus_search_affiliations(client, "AFFIL(MIT)", count=1)
-        ),
-        "citation-count / citations": await _probe(
-            do_get_citation_count(client, scopus_id="85180904906")
-        ),
-    }
-    return {
-        "api_key": masked,
-        "inst_token_configured": bool(settings.inst_token),
-        "capabilities": capabilities,
-    }
+    result = await diagnose(client)
+    result.update(api_key="configured (...)" if settings.api_key else "missing",
+                  inst_token_configured=bool(settings.inst_token))
+    return result
 
 
 async def _dispatch(client: ScopusClient, args: argparse.Namespace) -> dict[str, Any]:
@@ -148,9 +115,9 @@ async def _dispatch(client: ScopusClient, args: argparse.Namespace) -> dict[str,
     if command == "author":
         return await do_get_author(client, args.author_id)
     if command == "search-authors":
-        return await do_scopus_search_authors(client, args.query, args.count)
+        return await do_scopus_search_authors(client, args.query, args.count, args.start)
     if command == "search-affiliations":
-        return await do_scopus_search_affiliations(client, args.query, args.count)
+        return await do_scopus_search_affiliations(client, args.query, args.count, args.start)
     if command == "citation-count":
         return await do_get_citation_count(client, args.scopus_id, args.doi)
     if command == "citations":
@@ -167,7 +134,9 @@ async def _run_bulk(
     command = args.command
     spec = COMMANDS[command]
     make_iter, project = _BULK[command]
-    max_rows = max(1, int(args.max_rows))
+    max_rows = int(args.max_rows)
+    if max_rows < 1:
+        raise ValueError("--max must be a positive integer.")
 
     def on_page(emitted: int, total: int) -> None:
         emitter.note(f"[{command}] {emitted}/{min(total, max_rows)} rows harvested...")
@@ -177,6 +146,8 @@ async def _run_bulk(
         "start": getattr(args, "start", 0),
         "on_page": on_page,
     }
+    harvest: dict[str, Any] = {}
+    kwargs["harvest"] = harvest
     if command == "search":
         kwargs["view"] = args.view
 
@@ -184,25 +155,35 @@ async def _run_bulk(
     if streaming:
         emitter.begin_stream(spec.row_fields)
     buffered: list[dict] = []
+    raw_records: list[dict] = []
+    retrieval_times: set[str] = set()
     count = 0
     async for raw_row in make_iter(client, args.query, **kwargs):
+        if client.retrieved_at:
+            retrieval_times.add(client.retrieved_at)
         row = project(raw_row)
         count += 1
         if streaming:
             emitter.write_row(row)
         else:
             buffered.append(row)
+            if emitter.fmt in BIBLIOGRAPHIC_FORMATS:
+                raw_records.append(raw_row)
 
+    meta = {"query": args.query, "harvested": count, "max": max_rows,
+            "rate_limit": client.rate_limit, **harvest,
+            "retrieval_times": sorted(retrieval_times)}
+    retrieved_at = min(retrieval_times) if retrieval_times else None
+    write_record(args, meta, retrieved_at, count)
     if not streaming:
-        meta = {"query": args.query, "harvested": count, "max": max_rows,
-                "rate_limit": client.rate_limit}
-        if emitter.fmt == "json":
-            emitter.emit(command, buffered, data={"rows": buffered}, meta=meta,
-                         cached=client.all_cached)
-        elif emitter.fmt == "md":
-            emitter.emit(command, buffered, title=spec.title)
-        else:
-            emitter.write(render_table(buffered, emitter.style, spec.title))
+        data = {"papers": raw_records} if emitter.fmt in BIBLIOGRAPHIC_FORMATS else {"rows": buffered}
+        emitter.emit(command, buffered, data=data, meta=meta,
+                     cached=client.all_cached, title=spec.title, retrieved_at=retrieved_at)
+    if not harvest.get("complete_corpus", False):
+        reason = harvest.get("stop_reason")
+        if reason == "complete":
+            reason = "nonzero starting offset or duplicate records"
+        emitter.warn(f"Partial corpus: {reason}; retrieved {count} of {harvest.get('total_results')} matches. Use --record to save completeness metadata.")
     emitter.note(f"[{command}] done — {count} rows.")
     return EXIT_OK
 
@@ -210,13 +191,25 @@ async def _run_bulk(
 async def run_cli(args: argparse.Namespace, emitter: Emitter) -> int:
     command: str = args.command
 
+    if emitter.fmt in BIBLIOGRAPHIC_FORMATS and command not in ("search", "abstract"):
+        raise ValueError("Bibliographic formats support search and abstract only. Use -f json for this command.")
+    if command == "setup":
+        from .setup import run_setup, saved_settings
+        data = run_setup(args)
+        if data.pop("check_requested", False):
+            async with ScopusClient(saved_settings(), cache=build_cache("none")) as client:
+                data["access"] = await diagnose(client)
+                data["checked_configuration"] = "saved user credentials (environment/project credential overrides ignored for this check)"
+        emitter.emit(command, COMMANDS[command].rows_from(data), data=data, title="Configuration")
+        return EXIT_OK
+
     if command == "cache":
         return _cmd_cache(args, emitter)
     if command == "describe":
         return _cmd_describe(args, emitter)
 
     settings = get_settings()
-    backend = "none" if getattr(args, "no_cache", False) else "disk"
+    backend = "none" if command == "check" or getattr(args, "no_cache", False) else "disk"
     cache = build_cache(backend)
 
     async with ScopusClient(settings, cache=cache, refresh=args.refresh) as client:
@@ -225,7 +218,7 @@ async def run_cli(args: argparse.Namespace, emitter: Emitter) -> int:
             spec = COMMANDS["check"]
             rows = spec.rows_from(data)
             emitter.emit("check", rows, data=data, cached=client.all_cached,
-                         title=spec.title)
+                         title=spec.title, retrieved_at=client.retrieved_at)
             return EXIT_OK if data["capabilities"]["search"] == "ok" else EXIT_API
 
         if getattr(args, "fetch_all", False):
@@ -235,11 +228,15 @@ async def run_cli(args: argparse.Namespace, emitter: Emitter) -> int:
         data = await _dispatch(client, args)
         rows = spec.rows_from(data)
         meta = spec.meta_from(data)
+        for name in ("truncated", "complete_corpus", "next_start", "stop_reason", "retrieved_at"):
+            if name in data:
+                meta[name] = data[name]
         meta["rate_limit"] = client.rate_limit
         if data.get("access_note"):
             emitter.note(f"Note: {data['access_note']}")
+        write_record(args, meta, client.retrieved_at, len(rows))
         emitter.emit(command, rows, data=data, meta=meta, cached=client.all_cached,
-                     title=spec.title)
+                     title=spec.title, retrieved_at=client.retrieved_at)
         return EXIT_OK
 
 
@@ -254,6 +251,8 @@ def main_cli(args: argparse.Namespace) -> int:
         no_color=getattr(args, "no_color", False),
     )
     try:
+        if getattr(args, "record", None) and output and Path(args.record).resolve() == Path(output).resolve():
+            raise ValueError("--record and --output must refer to different files.")
         with emitter:
             return asyncio.run(run_cli(args, emitter))
     except KeyboardInterrupt:
@@ -269,8 +268,6 @@ def main_cli(args: argparse.Namespace) -> int:
 
 def main() -> None:
     """Console-script entry: subcommand → CLI, no subcommand → MCP stdio server."""
-    from dotenv import load_dotenv
-
     force_utf8()
 
     parser = build_parser()
@@ -279,8 +276,6 @@ def main() -> None:
     if args.version:
         print(get_version())
         return
-
-    load_dotenv()
 
     if args.command is not None:
         raise SystemExit(main_cli(args))

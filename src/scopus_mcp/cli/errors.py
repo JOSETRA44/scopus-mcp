@@ -15,9 +15,9 @@ from ..exceptions import (
     ScopusNotFoundError,
     ScopusRateLimitError,
 )
-from ..tools.author import AUTHOR_INST_NOTE
-from ..tools.citations import CITATIONS_INST_NOTE
-from ..tools.search import AFFILIATION_SEARCH_INST_NOTE, AUTHOR_SEARCH_INST_NOTE
+from ..services.author import AUTHOR_INST_NOTE
+from ..services.citations import CITATIONS_INST_NOTE
+from ..services.search import AFFILIATION_SEARCH_INST_NOTE, AUTHOR_SEARCH_INST_NOTE
 from .render import (
     EXIT_API,
     EXIT_AUTH,
@@ -37,7 +37,7 @@ INST_NOTES: dict[str, str] = {
 }
 
 DEFAULT_AUTH_HINT = (
-    "Set SCOPUS_API_KEY in your environment or .env file. "
+    "Run `scopus setup`, or set SCOPUS_API_KEY in your environment. "
     "Get a key at https://dev.elsevier.com/."
 )
 
