@@ -343,18 +343,19 @@ TITLE-ABS-KEY("federated learning") AND DOCTYPE(re) AND PUBYEAR > 2020
 
 ## Rate Limits & Best Practices
 
-| API | Quota / 7 days |
-|-----|---------------|
-| Search | 20,000 requests |
-| Abstract Retrieval | 5,000 requests |
-| Citation Count | 50,000 requests |
+Access and quotas vary per endpoint and Elsevier entitlement. Do not assume
+fixed quotas or that a key grants access. Use `scopus_check_access` for live
+diagnostics when needed; it consumes quota. Use `scopus setup` to configure
+credentials locally without putting them into prompts or command arguments.
 
 **Agent guidelines:**
 1. Always search first (`scopus_search`) before fetching abstracts — avoid unnecessary `scopus_get_abstract` calls on papers the user doesn't need
-2. Use `scopus_get_citation_count` (50K quota) instead of `scopus_get_abstract` (5K quota) when only citation counts are needed
+2. Use `scopus_get_citation_count` when only citation counts are needed, subject to access and observed quota
 3. Use pagination (`start` parameter) rather than increasing `count` beyond 25
 4. Cache responses in your session — identical queries return cached results automatically (5-min TTL)
-5. When the user asks for "top papers," sort by citation count by adding `&sort=citedby-count` context — the tool doesn't sort but you can re-rank the returned list
+5. Re-ranking a retrieved subset does not establish the top papers across all Scopus. Never append HTTP parameters to a Boolean query.
+6. Inspect `truncated`, `stop_reason` and the starting offset. Missing metrics are null, not zero. Save reproducibility metadata with CLI `--record`.
+7. Use `scopus_get_abstracts` for bounded batches. References, citing documents and corpus aggregates have dedicated tools with explicit limitations.
 
 ---
 
