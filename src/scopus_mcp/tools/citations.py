@@ -1,62 +1,17 @@
+from ..models import CitationCountResult, CitationsOverviewResult
 from typing import Annotated
-
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import ToolAnnotations
 from pydantic import Field
-
 from ..client import ScopusClient
 from ..exceptions import ScopusAPIError, ScopusAuthError
-from ..formatters import format_citation_count, format_citations_overview
-
-CITATIONS_INST_NOTE = (
-    "This endpoint requires an institutional Elsevier subscription. "
-    "Set SCOPUS_INST_TOKEN in your .env file. "
-    "Tip: the cited_by_count field in scopus_search and scopus_get_abstract "
-    "provides citation totals without institutional access."
-)
-
-
-async def do_get_citation_count(
-    client: ScopusClient,
-    scopus_id: str | None = None,
-    doi: str | None = None,
-) -> dict:
-    if not scopus_id and not doi:
-        raise ValueError("Provide at least one of: scopus_id or doi.")
-
-    params: dict = {}
-    if scopus_id:
-        params["scopus_id"] = scopus_id.strip()
-    elif doi:
-        params["doi"] = doi.strip()
-
-    raw = await client.request("/content/abstract/citation-count", params=params)
-    return format_citation_count(raw)
-
-
-async def do_get_citations_overview(
-    client: ScopusClient,
-    scopus_id: str,
-    start_year: int = 2000,
-    end_year: int = 2025,
-) -> dict:
-    if start_year > end_year:
-        raise ValueError("start_year must be less than or equal to end_year.")
-
-    raw = await client.request(
-        "/content/abstract/citations",
-        params={
-            "scopus_id": scopus_id.strip(),
-            "date": f"{start_year}-{end_year}",
-            "httpAccept": "application/json",
-        },
-    )
-    return format_citations_overview(raw)
-
+from ..services.citations import (do_get_citation_count, do_get_citations_overview, CITATIONS_INST_NOTE)
 
 def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
         name="scopus_get_citation_count",
         description=(
             "Get the current total citation count for a paper.\n\n"
@@ -74,17 +29,18 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
             str | None,
             Field(default=None, description="DOI of the paper"),
         ] = None,
-    ) -> dict:
+    ) -> CitationCountResult:
         try:
-            return await do_get_citation_count(client, scopus_id, doi)
+            return CitationCountResult.model_validate(await do_get_citation_count(client, scopus_id, doi))
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
         except ScopusAuthError as exc:
             raise ToolError(CITATIONS_INST_NOTE) from exc
-        except ScopusAPIError as exc:
+        except (ScopusAPIError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
         name="scopus_get_citations_overview",
         description=(
             "Get a year-by-year citation timeline for a paper.\n\n"
@@ -96,10 +52,9 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
             "Prefer scopus_get_citation_count when you only need one total - it is a "
             "single cheap lookup. Use this when the *shape* of the citation curve over "
             "time matters.\n\n"
-            "**Access:** needs SCOPUS_INST_TOKEN *and* a request from a subscribing "
-            "institution network, on top of SCOPUS_API_KEY. Without both, Elsevier "
-            "returns AUTHENTICATION_ERROR even with a valid key - a licensing "
-            "restriction, so retrying will not help."
+            "Access depends on your Elsevier endpoint entitlement. An institutional "
+            "token or approved network may be required; use scopus_check_access to "
+            "diagnose access before retrying authorization failures."
         ),
     )
     async def scopus_get_citations_overview(
@@ -109,18 +64,18 @@ def register_citation_tools(mcp: FastMCP, client: ScopusClient) -> None:
         ],
         start_year: Annotated[
             int,
-            Field(default=2000, ge=1960, le=2030, description="First year of citation range"),
+            Field(default=2000, ge=1960, description="First year of citation range"),
         ] = 2000,
         end_year: Annotated[
-            int,
-            Field(default=2025, ge=1960, le=2030, description="Last year of citation range"),
-        ] = 2025,
-    ) -> dict:
+            int | None,
+            Field(default=None, ge=1960, description="Last year of citation range; defaults to current year"),
+        ] = None,
+    ) -> CitationsOverviewResult:
         try:
-            return await do_get_citations_overview(client, scopus_id, start_year, end_year)
+            return CitationsOverviewResult.model_validate(await do_get_citations_overview(client, scopus_id, start_year, end_year))
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
         except ScopusAuthError as exc:
             raise ToolError(CITATIONS_INST_NOTE) from exc
-        except ScopusAPIError as exc:
+        except (ScopusAPIError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
