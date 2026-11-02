@@ -39,13 +39,13 @@ def register_prompts(mcp: FastMCP) -> None:
 Run `scopus_search` with this query to get a baseline result count:
 
 ```
-TITLE-ABS-KEY("{topic}") AND PUBYEAR > {start_year}
+TITLE-ABS-KEY("{topic}") AND PUBYEAR > {start_year - 1}
 ```
 
 ## Step 2 — Focused query (articles and reviews only)
 
 ```
-TITLE-ABS-KEY("{topic}") AND PUBYEAR > {start_year} AND DOCTYPE(ar OR re)
+TITLE-ABS-KEY("{topic}") AND PUBYEAR > {start_year - 1} AND (DOCTYPE(ar) OR DOCTYPE(re))
 ```
 
 ## Step 3 — Refine with PICO terms (if applicable)
@@ -58,7 +58,7 @@ TITLE-ABS-KEY(
   {"AND (" + population + ")" if population else ""}
   {"AND (" + intervention + ")" if intervention else ""}
   {"AND (" + outcome + ")" if outcome else ""}
-) AND PUBYEAR > {start_year} AND DOCTYPE(ar OR re)
+) AND PUBYEAR > {start_year - 1} AND (DOCTYPE(ar) OR DOCTYPE(re))
 ```
 
 ## Step 4 — Retrieve full details
@@ -67,19 +67,19 @@ For each paper in the results, call `scopus_get_abstract` with:
 - `identifier_type`: `"scopus_id"`
 - `identifier`: the `scopus_id` from search results
 
-## Step 5 — Citation impact screening
+## Step 5 — Optional bibliometric description
 
-Use `scopus_get_citation_count` to quickly screen for high-impact papers without consuming Abstract API quota.
+Use `scopus_get_citation_count` to describe citation impact after applying predefined eligibility criteria. Citation counts alone do not establish relevance or methodological quality. Record the search date, full query and any truncation before claiming a complete corpus.
 
 ## Inclusion criteria checklist
 - [ ] Published {start_year}–present
 - [ ] Article or review document type
-- [ ] Peer-reviewed (Scopus-indexed sources only)
+- [ ] Verify peer-review status and document eligibility; indexing alone is not sufficient
 - [ ] Language: English (add `AND LANGUAGE(English)` if needed)
 - [ ] Directly addresses: {topic}
 
 ## Exclusion criteria checklist
-- [ ] Conference abstracts only (`AND NOT DOCTYPE(cp)`)
+- [ ] Conference papers, only if excluded by your protocol (`AND NOT DOCTYPE(cp)`)
 - [ ] Grey literature / editorials
 - [ ] Duplicate records (check DOI)
 

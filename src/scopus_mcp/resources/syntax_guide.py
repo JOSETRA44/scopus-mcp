@@ -99,15 +99,12 @@ TITLE-ABS-KEY("skill mismatch" AND "higher education" AND employability)
 
 Example: `AUTHLASTNAME(Smith) AND AUTHFIRST(J) AND AFFIL(Harvard)`
 
-## Rate Limits (Elsevier API quotas per 7 days)
+## Access and rate limits
 
-| API | Quota |
-|-----|-------|
-| Scopus Search | 20,000 requests |
-| Abstract Retrieval | 5,000 requests |
-| Citation Count | 50,000 requests |
-
-Quotas depend on your institutional subscription.
+Endpoint access and quotas depend on your Elsevier entitlement. Do not assume
+that an API key grants every operation or that all search endpoints share a quota.
+Use scopus_check_access for explicit diagnostics; it consumes seven live requests.
+See https://dev.elsevier.com/api_key_settings.html for current details.
 """
 
 

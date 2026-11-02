@@ -73,17 +73,14 @@ TITLE-ABS-KEY("artificial intelligence") AND (SUBJAREA(COMP) OR SUBJAREA(MEDI))
 API_REFERENCE_GUIDE = """\
 # Scopus API Reference for MCP Tools
 
-## Rate Limits (per 7-day rolling window)
+## Access and request budgets
 
-| API Endpoint | Weekly Quota | Notes |
-|-------------|:------------:|-------|
-| Scopus Search | 20,000 | `scopus_search`, `scopus_search_authors`, `scopus_search_affiliations` |
-| Abstract Retrieval | 5,000 | `scopus_get_abstract` — use sparingly |
-| Author Retrieval | 5,000 | `scopus_get_author` |
-| Citation Count | 50,000 | `scopus_get_citation_count` — preferred for bulk checks |
-| Citations Overview | 5,000 | `scopus_get_citations_overview` |
-
-> Quotas depend on your institutional Elsevier subscription. Free developer keys have lower limits.
+Access and quotas depend on Elsevier entitlements, separately for each API.
+Do not assume a universal weekly quota or that a developer key grants access.
+Use `scopus_check_access` when diagnosing permissions (seven live requests),
+or `scopus check` in the CLI. Observed quota headers are reported per endpoint.
+Quota/retry waits have a configurable budget; long reset delays return an error.
+Official details: https://dev.elsevier.com/api_key_settings.html
 
 ## Tool Quick Reference
 
@@ -96,7 +93,7 @@ API_REFERENCE_GUIDE = """\
 ### `scopus_get_abstract` → full paper record
 - **Best for:** Full metadata, authors, keywords, affiliations
 - **Key params:** `identifier_type` (scopus_id|doi|eid|pubmed_id), `identifier`
-- **Quota cost:** 1 per call from the 5,000 Abstract pool — use wisely
+- **Quota cost:** One request, or two when FULL is forbidden and META fallback is tried
 - **Tip:** Use `scopus_get_citation_count` first if you only need citations
 
 ### `scopus_get_author` → researcher profile
@@ -106,18 +103,18 @@ API_REFERENCE_GUIDE = """\
 
 ### `scopus_search_authors` → author list
 - **Best for:** Finding researcher IDs by name/ORCID/institution
-- **Key params:** `query` (author Boolean), `count`
+- **Key params:** `query` (author Boolean), `count`, `start`
 - **Example:** `AUTHLASTNAME(Smith) AND AUTHFIRST(J) AND AFFIL(MIT)`
 
 ### `scopus_search_affiliations` → institution list
 - **Best for:** Finding affiliation IDs for `AF-ID()` filters
-- **Key params:** `query`, `count`
+- **Key params:** `query`, `count`, `start`
 - **Example:** `AFFIL(Harvard) AND COUNTRY(United States)`
 
 ### `scopus_get_citation_count` → single number
 - **Best for:** Quick citation screening of many papers
 - **Key params:** `scopus_id` OR `doi`
-- **Quota cost:** 1 per call from the generous 50,000 pool
+- **Quota cost:** One request, excluding retries; check your endpoint quota
 
 ### `scopus_get_citations_overview` → year-by-year dict
 - **Best for:** Citation trend charts, impact trajectory
@@ -127,8 +124,18 @@ API_REFERENCE_GUIDE = """\
 
 ### Pattern 1 — Topic → High-impact papers
 1. `scopus_search` with broad query → get `scopus_id` list
-2. `scopus_get_citation_count` in bulk → rank by citations (uses 50K pool)
-3. `scopus_get_abstract` only for top N papers → rich metadata (uses 5K pool)
+2. `scopus_get_citation_count` → optional citation analysis, subject to access
+3. `scopus_get_abstracts` → batches of up to 25 papers with individual outcomes
+
+Citation ranking is not a default eligibility criterion for a systematic review.
+Inspect truncation and missing metrics before interpreting results.
+
+### Citation exploration and corpus statistics
+- `scopus_get_references` returns references with explicit completeness metadata.
+- `scopus_get_citing_documents` uses entitlement-dependent REFEID searches.
+- `scopus_analyze_results` aggregates only its bounded retrieved corpus; it does
+  not estimate whole-database counts from a partial sample.
+- Search pages include next_start/truncated; CLI --record saves a search record.
 
 ### Pattern 2 — Author benchmarking
 1. `scopus_search_authors` → get `author_id`
@@ -156,10 +163,14 @@ API_REFERENCE_GUIDE = """\
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SCOPUS_API_KEY` | _(required)_ | Elsevier API key from dev.elsevier.com |
-| `SCOPUS_INST_TOKEN` | `None` | Institutional token for full-text/off-campus access |
+| `SCOPUS_INST_TOKEN` | `None` | Institutional token when required by your entitlement |
 | `SCOPUS_CACHE_TTL` | `300` | Response cache TTL in seconds (0 = disabled) |
-| `SCOPUS_MAX_RETRIES` | `3` | Retries on HTTP 429 |
+| `SCOPUS_MAX_RETRIES` | `3` | Retries on HTTP 429 and transient 5xx |
+| `SCOPUS_MAX_WAIT_SECONDS` | `10` | Cumulative quota/retry wait budget |
 | `LOG_LEVEL` | `INFO` | `DEBUG` · `INFO` · `WARNING` · `ERROR` |
+
+Run `scopus setup` for guided local configuration. Environment variables override
+the working-directory .env, which overrides saved user configuration.
 """
 
 
