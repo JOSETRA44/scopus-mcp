@@ -1,177 +1,17 @@
-from typing import Annotated, Any, AsyncIterator, Callable
-
+from ..models import PaperSearchResult, AuthorSearchResult, AffiliationSearchResult
+from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import ToolAnnotations
 from pydantic import Field
-
 from ..client import ScopusClient
 from ..exceptions import ScopusAPIError, ScopusAuthError
-from ..formatters import (
-    format_affiliation_search_results,
-    format_author_search_results,
-    format_search_results,
-)
-
-AUTHOR_SEARCH_INST_NOTE = (
-    "Author search requires an institutional Elsevier subscription. "
-    "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
-)
-AFFILIATION_SEARCH_INST_NOTE = (
-    "Affiliation search requires an institutional Elsevier subscription. "
-    "Set SCOPUS_INST_TOKEN in your .env file to enable this tool."
-)
-
-# Scopus caps a single search page at 25 entries and the total retrievable
-# window at 5000 (start + count), regardless of how large total_results is.
-PAGE_MAX = 25
-OFFSET_MAX = 5000
-
-
-async def do_scopus_search(
-    client: ScopusClient,
-    query: str,
-    count: int = 10,
-    start: int = 0,
-    view: str = "STANDARD",
-) -> dict:
-    raw = await client.request(
-        "/content/search/scopus",
-        params={"query": query, "count": count, "start": start, "view": view},
-    )
-    return format_search_results(raw, query=query)
-
-
-async def do_scopus_search_authors(client: ScopusClient, query: str, count: int = 10) -> dict:
-    raw = await client.request(
-        "/content/search/author",
-        params={"query": query, "count": count},
-    )
-    return format_author_search_results(raw, query=query)
-
-
-async def do_scopus_search_affiliations(client: ScopusClient, query: str, count: int = 10) -> dict:
-    raw = await client.request(
-        "/content/search/affiliation",
-        params={"query": query, "count": count},
-    )
-    return format_affiliation_search_results(raw, query=query)
-
-
-async def _paginate(
-    client: ScopusClient,
-    path: str,
-    query: str,
-    formatter: Callable[..., dict],
-    rows_key: str,
-    id_key: str,
-    max_rows: int,
-    start: int = 0,
-    extra_params: dict[str, Any] | None = None,
-    on_page: Callable[[int, int], None] | None = None,
-) -> AsyncIterator[dict]:
-    """Walk a Scopus offset-paginated endpoint, yielding one row at a time.
-
-    Shared by every `--all` capable search command. Deduplicates on ``id_key``
-    because Scopus can shift a result between pages while a harvest is running.
-    """
-    seen: set[str] = set()
-    emitted = 0
-    offset = start
-    while emitted < max_rows and offset < OFFSET_MAX:
-        count = min(PAGE_MAX, max_rows - emitted, OFFSET_MAX - offset)
-        params: dict[str, Any] = {"query": query, "count": count, "start": offset}
-        if extra_params:
-            params.update(extra_params)
-        page = formatter(await client.request(path, params=params), query=query)
-        rows = page.get(rows_key, [])
-        if not rows:
-            break
-        total = int(page.get("total_results", 0))
-        for row in rows:
-            ident = str(row.get(id_key, ""))
-            if ident and ident in seen:
-                continue
-            if ident:
-                seen.add(ident)
-            yield row
-            emitted += 1
-            if emitted >= max_rows:
-                break
-        offset += len(rows)
-        if on_page is not None:
-            on_page(emitted, total)
-        if total and offset >= total:
-            break
-
-
-def iter_scopus_search(
-    client: ScopusClient,
-    query: str,
-    max_rows: int = 1000,
-    start: int = 0,
-    view: str = "STANDARD",
-    on_page: Callable[[int, int], None] | None = None,
-) -> AsyncIterator[dict]:
-    """Stream every paper matching ``query``, up to ``max_rows``."""
-    return _paginate(
-        client,
-        "/content/search/scopus",
-        query,
-        format_search_results,
-        rows_key="papers",
-        id_key="scopus_id",
-        max_rows=max_rows,
-        start=start,
-        extra_params={"view": view},
-        on_page=on_page,
-    )
-
-
-def iter_scopus_search_authors(
-    client: ScopusClient,
-    query: str,
-    max_rows: int = 1000,
-    start: int = 0,
-    on_page: Callable[[int, int], None] | None = None,
-) -> AsyncIterator[dict]:
-    """Stream every author profile matching ``query``, up to ``max_rows``."""
-    return _paginate(
-        client,
-        "/content/search/author",
-        query,
-        format_author_search_results,
-        rows_key="authors",
-        id_key="author_id",
-        max_rows=max_rows,
-        start=start,
-        on_page=on_page,
-    )
-
-
-def iter_scopus_search_affiliations(
-    client: ScopusClient,
-    query: str,
-    max_rows: int = 1000,
-    start: int = 0,
-    on_page: Callable[[int, int], None] | None = None,
-) -> AsyncIterator[dict]:
-    """Stream every affiliation record matching ``query``, up to ``max_rows``."""
-    return _paginate(
-        client,
-        "/content/search/affiliation",
-        query,
-        format_affiliation_search_results,
-        rows_key="affiliations",
-        id_key="affiliation_id",
-        max_rows=max_rows,
-        start=start,
-        on_page=on_page,
-    )
-
+from ..services.search import (do_scopus_search, do_scopus_search_authors, do_scopus_search_affiliations, iter_scopus_search, iter_scopus_search_authors, iter_scopus_search_affiliations, AUTHOR_SEARCH_INST_NOTE, AFFILIATION_SEARCH_INST_NOTE, PAGE_MAX, OFFSET_MAX)
 
 def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
         name="scopus_search",
         description=(
             "Search the Scopus academic database for papers using Boolean query syntax.\n\n"
@@ -195,19 +35,20 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
         ] = 10,
         start: Annotated[
             int,
-            Field(default=0, ge=0, description="Pagination offset (0-based)"),
+            Field(default=0, ge=0, le=4999, description="Pagination offset (0-based)"),
         ] = 0,
         view: Annotated[
-            str,
+            Literal["STANDARD", "COMPLETE"],
             Field(default="STANDARD", description="Response detail: STANDARD or COMPLETE"),
         ] = "STANDARD",
-    ) -> dict:
+    ) -> PaperSearchResult:
         try:
-            return await do_scopus_search(client, query, count, start, view)
-        except ScopusAPIError as exc:
+            return PaperSearchResult.model_validate(await do_scopus_search(client, query, count, start, view))
+        except (ScopusAPIError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
         name="scopus_search_authors",
         description=(
             "Search for author profiles in the Scopus author index.\n\n"
@@ -226,15 +67,17 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
             int,
             Field(default=10, ge=1, le=25, description="Number of results (1–25)"),
         ] = 10,
-    ) -> dict:
+        start: Annotated[int, Field(ge=0, le=4999, description="Pagination offset")] = 0,
+    ) -> AuthorSearchResult:
         try:
-            return await do_scopus_search_authors(client, query, count)
+            return AuthorSearchResult.model_validate(await do_scopus_search_authors(client, query, count, start))
         except ScopusAuthError as exc:
             raise ToolError(AUTHOR_SEARCH_INST_NOTE) from exc
-        except ScopusAPIError as exc:
+        except (ScopusAPIError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
         name="scopus_search_affiliations",
         description=(
             "Search for institution and affiliation records in Scopus.\n\n"
@@ -251,10 +94,14 @@ def register_search_tools(mcp: FastMCP, client: ScopusClient) -> None:
             int,
             Field(default=10, ge=1, le=25, description="Number of results (1–25)"),
         ] = 10,
-    ) -> dict:
+        start: Annotated[int, Field(ge=0, le=4999, description="Pagination offset")] = 0,
+    ) -> AffiliationSearchResult:
         try:
-            return await do_scopus_search_affiliations(client, query, count)
+            return AffiliationSearchResult.model_validate(await do_scopus_search_affiliations(client, query, count, start))
         except ScopusAuthError as exc:
             raise ToolError(AFFILIATION_SEARCH_INST_NOTE) from exc
-        except ScopusAPIError as exc:
+        except (ScopusAPIError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
+
+# Backward-compatible public imports for existing CLI integrations.
+__all__ = ['iter_scopus_search', 'iter_scopus_search_authors', 'iter_scopus_search_affiliations', 'PAGE_MAX', 'OFFSET_MAX', 'register_search_tools']
