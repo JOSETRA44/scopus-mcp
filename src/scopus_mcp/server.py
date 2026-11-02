@@ -13,6 +13,8 @@ from .tools.abstract import register_abstract_tools
 from .tools.author import register_author_tools
 from .tools.citations import register_citation_tools
 from .tools.search import register_search_tools
+from .tools.diagnostics import register_diagnostics_tools
+from .tools.research import register_research_tools
 
 
 def create_app() -> FastMCP:
@@ -35,7 +37,7 @@ def create_app() -> FastMCP:
         instructions=(
             "You have access to the Elsevier Scopus academic database — one of the world's "
             "largest curated collections of research literature.\n\n"
-            "## Tools (7)\n"
+            "## Tools\n"
             "- scopus_search — find papers by topic, author, journal, or year using Boolean queries\n"
             "- scopus_get_abstract — fetch full paper details (abstract, authors, keywords) by ID or DOI\n"
             "- scopus_get_author — retrieve researcher metrics (h-index, citations, publications)\n"
@@ -43,6 +45,13 @@ def create_app() -> FastMCP:
             "- scopus_search_affiliations — find institutional records\n"
             "- scopus_get_citation_count — quick citation count for a paper\n"
             "- scopus_get_citations_overview — year-by-year citation timeline\n\n"
+            "- scopus_get_abstracts — bounded batch retrieval with per-record errors\n"
+            "- scopus_check_access — live endpoint diagnostics (uses quota)\n"
+            "- scopus_get_references — a paper's available bibliography\n"
+            "- scopus_get_citing_documents — papers citing a document\n"
+            "- scopus_analyze_results — aggregate an explicitly bounded corpus\n\n"
+            "Check truncated/stop_reason before claiming a complete corpus. Null metrics "
+            "mean unknown, not zero. Access depends on Elsevier entitlements.\n\n"
             "## Prompts (3)\n"
             "- systematic_literature_review — structured SLR search strategy with PICO framework\n"
             "- author_impact_analysis — step-by-step researcher benchmarking workflow\n"
@@ -61,6 +70,8 @@ def create_app() -> FastMCP:
     register_abstract_tools(mcp, client)
     register_author_tools(mcp, client)
     register_citation_tools(mcp, client)
+    register_diagnostics_tools(mcp, settings)
+    register_research_tools(mcp, client)
     register_resources(mcp)
     register_api_resources(mcp)
     register_prompts(mcp)
