@@ -140,5 +140,5 @@ def run_setup(args) -> dict:
     return {"saved": True, "path": str(path), "check_requested": bool(args.check),
             "environment_override": bool(os.getenv("SCOPUS_API_KEY")),
             "project_override": bool(dotenv_values(Path.cwd() / ".env").get("SCOPUS_API_KEY")),
-            "next_step": "Run scopus check to test access. MCP clients can run uvx scopus-mcp without embedding the key.",
+            "next_step": "Run scopus check to test access. MCP clients can run uvx josetra-scopus-mcp without embedding the key.",
             "precedence": "Environment variables > working-directory .env > saved user configuration."}

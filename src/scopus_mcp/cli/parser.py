@@ -19,9 +19,10 @@ SUPPRESS = argparse.SUPPRESS
 
 def get_version() -> str:
     try:
-        return version("scopus-mcp")
+        return version("josetra-scopus-mcp")
     except PackageNotFoundError:
-        return "0.1.0 (dev, not installed)"
+        from .. import __version__
+        return f"{__version__} (dev, not installed)"
 
 
 def add_global_flags(parser: argparse.ArgumentParser, sub: bool = False) -> None:

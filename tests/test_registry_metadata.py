@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,13 @@ def test_readme_marker_matches_the_manifest_name(manifest: dict) -> None:
 
 def test_manifest_version_matches_the_package(manifest: dict) -> None:
     assert manifest["version"] == project_version()
+
+
+def test_distribution_matches_the_pending_pypi_project(manifest: dict) -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["name"] == "josetra-scopus-mcp"
+    assert manifest["packages"][0]["identifier"] == project["name"]
+    assert project["scripts"]["josetra-scopus-mcp"] == "scopus_mcp.cli:main"
 
 
 def test_the_packaged_version_matches_the_manifest_version(manifest: dict) -> None:

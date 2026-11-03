@@ -43,15 +43,15 @@ def _uvx_command() -> list[str]:
         uvx = shutil.which("uvx")
 
     if uvx:
-        return [uvx, "scopus-mcp"]
+        return [uvx, "josetra-scopus-mcp"]
 
     # Fall back to pip-installed binary
-    scopus = shutil.which("scopus-mcp") or shutil.which("scopus-mcp.exe")
+    scopus = shutil.which("josetra-scopus-mcp") or shutil.which("josetra-scopus-mcp.exe")
     if scopus:
         return [scopus]
 
     # Last resort: let the user sort it out
-    return ["uvx", "scopus-mcp"]
+    return ["uvx", "josetra-scopus-mcp"]
 
 
 def _server_block(api_key: str) -> dict:
@@ -272,7 +272,7 @@ def main() -> None:
     if not detected:
         print("No supported MCP clients detected on this machine.")
         print("Supported: Claude Desktop, Cursor, Windsurf, VS Code")
-        print("\nFor manual setup, see the README:  https://github.com/YOUR_USER/scopus-mcp")
+        print("\nFor manual setup, see the README:  https://github.com/JOSETRA44/scopus-mcp")
         sys.exit(0)
 
     print(f"Detected {len(detected)} client(s):")
