@@ -1,221 +1,330 @@
 <img width="1600" height="500" alt="SCOPUS-MCP _ Minimal GitHub banner · 1600×500" src="https://github.com/user-attachments/assets/20cf9e90-f9cf-49e6-8997-cc5662e6d84e" />
 
-[![MCP Badge](https://lobehub.com/badge/mcp/josetra44-scopus-mcp)](https://lobehub.com/mcp/josetra44-scopus-mcp)
+# Scopus MCP
+
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
-[![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io/)
 
-# Scopus MCP Server
+<!-- mcp-name: io.github.JOSETRA44/scopus-mcp -->
 
-Connects any MCP-compatible AI agent to the [Elsevier Scopus](https://www.scopus.com/) academic database — search 100+ million scholarly records, retrieve full abstracts, analyze author impact, and track citation trends.
+**Search academic literature from your AI assistant or terminal.** Find papers,
+retrieve abstracts, explore citations and export references with Elsevier Scopus.
+Includes a guided setup, 12 MCP tools and a standalone CLI.
 
-**Works with:** Claude Desktop · Claude Code · Cursor · VS Code Copilot · Windsurf · Zed · Continue.dev · any MCP client
+[Quick start](#quick-start) · [Installation methods](#installation-methods) ·
+[API key setup](#api-key-setup) · [Connect your AI assistant](#connect-your-ai-assistant) ·
+[Examples](#examples) · [Troubleshooting](#troubleshooting)
 
----
+**Official package name:** `josetra-scopus-mcp` · **CLI commands:** `scopus`,
+`scps`, `scopus-mcp`, `josetra-scopus-mcp` · **Python import:** `scopus_mcp`.
 
-## Quickstart (2 minutes)
+The first PyPI release is being prepared. The PyPI installation commands below
+work after that release is published; until then, use a GitHub source or local
+checkout. The unrelated PyPI name `scopus-mcp` is not this distribution.
 
-**1. Get your Scopus API key** (free) at [dev.elsevier.com](https://dev.elsevier.com/) → Register → Create API Key
+## Quick start
 
-**2. Install and run** — pick one method:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
 
-```bash
-# Option A: uvx (recommended — no environment setup needed)
-uvx scopus-mcp
-
-# Option B: pip
-pip install scopus-mcp
-scopus-mcp
+```sh
+uv tool install josetra-scopus-mcp
+uv tool update-shell
 ```
 
-**3. Add to your AI client** — see the [Configuration](#configuration-by-client) section below.
+**Close and reopen your terminal** so the PATH change takes effect. Then:
 
----
-
-## Prerequisites
-
-### Python 3.11+
-```bash
-python --version   # needs 3.11 or higher
-# Install if missing: https://python.org/downloads
+```sh
+scopus setup
+scopus check
+scopus search 'TITLE-ABS-KEY("machine learning")' --count 5
 ```
 
-### uv (recommended)
-```bash
-# Windows
-winget install astral-sh.uv
+`setup` asks for your API key without displaying it. Get a key from the
+[Elsevier developer portal](https://dev.elsevier.com/). Endpoint access depends on
+your Elsevier entitlements; a key alone does not guarantee access to every tool.
 
-# macOS / Linux
+For Spanish prompts: `scopus setup --language es`.
+
+## Installation methods
+
+Choose **one** method. You do not need to install the package multiple ways.
+
+| You want to… | Method | How you run commands |
+|---|---|---|
+| Try it without adding commands to PATH | [A. uvx](#a-run-with-uvx) | `uvx josetra-scopus-mcp …` |
+| Run `scopus` from any folder | [B. Install on PATH](#b-install-on-your-path) | `scopus …` |
+| Use Python and pip | [C. pip](#c-install-with-pip) | Virtual-environment executable |
+| Run or install a downloaded folder | [D. Local path](#d-use-a-local-folder) | `uvx --from "/path/…" scopus …` |
+| Develop or modify the code | [E. Source checkout](#e-work-from-source) | `uv run scopus …` |
+
+Python **3.11 or newer** is required. uv can download a compatible Python when
+needed. Git is required for `git+https://…` installs and cloning; a local folder
+or wheel can be installed without Git.
+
+<details>
+<summary>Install uv first</summary>
+
+**Windows — PowerShell**
+
+```powershell
+winget install --id astral-sh.uv -e
+```
+
+**macOS / Linux**
+
+```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
----
+Reopen the terminal, then verify:
 
-## Installation
-
-### Option A — uvx (zero configuration)
-```bash
-# Install and run in a single command
-uvx scopus-mcp
-
-# Upgrade later
-uv tool upgrade scopus-mcp
+```sh
+uv --version
+uvx --version
 ```
 
-### Option B — pip
-```bash
-pip install scopus-mcp
+Alternative installers are listed in the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-# Verify installation
-scopus-mcp --help
+</details>
+
+### A. Run with uvx
+
+Run the official PyPI package in an isolated environment, without adding commands to your PATH:
+
+```sh
+uvx josetra-scopus-mcp --help
+uvx josetra-scopus-mcp setup
+uvx josetra-scopus-mcp check
 ```
 
-### Option C — From source (development)
-```bash
+The equivalent longer form is `uv tool run josetra-scopus-mcp --help`.
+To select the shorter executable explicitly, use `uvx --from josetra-scopus-mcp scopus --help`.
+uv caches the tool environment, so it need not download everything each time.
+
+To request the latest published release on a later run:
+
+```sh
+uvx josetra-scopus-mcp@latest --help
+```
+
+### B. Install on your PATH
+
+Recommended for regular terminal use. uv creates an isolated tool environment
+and exposes the `scopus`, `scps` and `scopus-mcp` commands:
+
+```sh
+uv tool install josetra-scopus-mcp
+uv tool update-shell
+```
+
+Reopen your terminal. These commands should now work **from any folder**:
+
+```sh
+scopus --help
+scopus setup
+scopus check
+```
+
+To reinstall this distribution explicitly:
+
+```sh
+uv tool install --reinstall josetra-scopus-mcp
+```
+
+Locate the executable directory with `uv tool dir --bin`. To see which executable
+your terminal will use:
+
+```powershell
+# Windows — PowerShell
+(Get-Command scopus).Source
+(Get-Command scopus-mcp).Source
+```
+
+```sh
+# macOS / Linux
+command -v scopus
+command -v scopus-mcp
+```
+
+### C. Install with pip
+
+Use a virtual environment to keep dependencies separate from your system Python.
+These examples call its executables directly, so activation is optional.
+
+**Windows — PowerShell**
+
+```powershell
+py -3.11 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install josetra-scopus-mcp
+& .\.venv\Scripts\scopus.exe setup
+& .\.venv\Scripts\scopus.exe check
+```
+
+Use your installed Python version if it is newer than 3.11.
+
+**macOS / Linux**
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install josetra-scopus-mcp
+.venv/bin/scopus setup
+.venv/bin/scopus check
+```
+
+Check `python3 --version` first; it must be at least 3.11. To use `scopus` without
+its path, activate the environment in each terminal, or choose method B for a
+persistent PATH installation. MCP clients should use the **absolute path** to
+this environment's `scopus-mcp` executable.
+
+### D. Use a local folder
+
+Already cloned or downloaded this repository? Point uv directly to the folder
+containing `pyproject.toml`. Quote paths containing spaces.
+
+**Windows — PowerShell**
+
+```powershell
+uvx --from "C:/Projects/scopus-mcp" scopus setup
+uvx --from "C:/Projects/scopus-mcp" scopus check
+```
+
+**macOS / Linux**
+
+```sh
+uvx --from "/absolute/path/to/scopus-mcp" scopus setup
+uvx --from "/absolute/path/to/scopus-mcp" scopus check
+```
+
+To install that folder on PATH instead:
+
+```sh
+uv tool install --editable "/absolute/path/to/scopus-mcp"
+uv tool update-shell
+```
+
+On Windows, replace the path with `C:/Projects/scopus-mcp`. Reopen the terminal,
+then run `scopus --help`. An editable installation reads your local source;
+keep the folder in place. If replacing an existing tool installation, add
+`--reinstall` explicitly.
+
+### E. Work from source
+
+To install from GitHub before the first PyPI release (Git required):
+
+```sh
+uv tool install --from git+https://github.com/JOSETRA44/scopus-mcp.git josetra-scopus-mcp
+uv tool update-shell
+```
+
+Or clone the repository for development:
+
+```sh
 git clone https://github.com/JOSETRA44/scopus-mcp.git
 cd scopus-mcp
-uv sync                    # installs all dependencies
-cp .env.example .env       # edit .env with your API key
-uv run scopus-mcp          # run directly from source
+uv sync --group dev
+uv run scopus setup
+uv run scopus check
 ```
 
----
+No PATH installation is needed: prefix commands with `uv run` while inside the
+repository. From another folder, use an absolute directory:
 
-## Terminal CLI
-
-Besides running as an MCP server, `scopus-mcp` also installs three equivalent commands — `scopus-mcp`, `scopus`, and the short alias `scps` — as a **standalone command-line tool** for one-off lookups, testing your API key, or scripting, no MCP client required.
-
-```bash
-# Install globally as a uv tool (adds scopus / scps / scopus-mcp to PATH)
-uv tool install --editable /path/to/scopus-mcp
-
-scopus --help                 # list all subcommands
-scopus check                  # validate your API key live against each endpoint
-scopus search 'TITLE-ABS-KEY("machine learning")' --count 5
-scps abstract 85180904906 --type scopus_id
-scopus author 7401234567
-scopus search-authors "AUTHLASTNAME(Smith)"
-scopus search-affiliations "AFFIL(MIT)"
-scopus citation-count --doi 10.1016/j.cell.2023.01.001
-scopus citations 85180904906 --start-year 2020 --end-year 2024
+```sh
+uv --directory "/absolute/path/to/scopus-mcp" run scopus --help
 ```
 
-Add `--json` to any subcommand for raw structured output (useful for piping into `jq` or scripts).
+## API key setup
 
-> Running any of the three commands **with no subcommand** starts the MCP stdio server instead — the mode MCP clients (Claude Desktop, Claude Code, etc.) use. It will sit waiting for input on stdin; that's expected, not a hang.
+After installing, use `scopus setup` (or the corresponding uvx/uv run command).
+The wizard guides you through:
 
-| Subcommand | Equivalent MCP tool |
-|---|---|
-| `search <query>` | `scopus_search` |
-| `abstract <id> --type ...` | `scopus_get_abstract` |
-| `author <author_id>` | `scopus_get_author` |
-| `search-authors <query>` | `scopus_search_authors` |
-| `search-affiliations <query>` | `scopus_search_affiliations` |
-| `citation-count --scopus-id/--doi` | `scopus_get_citation_count` |
-| `citations <scopus_id>` | `scopus_get_citations_overview` |
-| `check` | *(CLI-only)* diagnostic — live-checks your key against every endpoint |
+1. Entering your Elsevier API key with hidden input.
+2. Optionally entering an institutional token.
+3. Confirming where to save the configuration.
 
----
+```sh
+scopus setup --language es
+scopus setup --show
+scopus setup --check
+```
 
-## Environment Variables
+Enter preserves an existing value; `-` removes a saved institutional token.
+Ctrl+C cancels. `--show` displays status and path, never credentials.
+`--check` tests the saved credentials after saving and consumes API quota.
 
-| Variable | Required | Default | Description |
-|----------|:--------:|---------|-------------|
-| `SCOPUS_API_KEY` | **Yes** | — | Your Elsevier API key |
-| `SCOPUS_INST_TOKEN` | No | — | Institutional token (for off-campus / full-text access) |
-| `SCOPUS_CACHE_TTL` | No | `300` | Response cache duration in seconds (0 = disabled) |
-| `SCOPUS_MAX_RETRIES` | No | `3` | Retries on rate-limit errors (HTTP 429) |
-| `LOG_LEVEL` | No | `INFO` | Verbosity: `DEBUG` · `INFO` · `WARNING` · `ERROR` |
+Configuration is stored for your operating-system account and works across
+folders. The file is plaintext with restricted permissions, not an encrypted
+vault. Environment variables override the working-directory `.env`, which
+in turn overrides the saved user configuration.
 
-> **Using a `.env` file?** Copy `.env.example` → `.env` and fill in your key. Never commit it.
+For containers or automation, supply `SCOPUS_API_KEY` and, if applicable,
+`SCOPUS_INST_TOKEN` through the environment. To save those values explicitly,
+use `scopus setup --from-env`; add `--force` to replace an existing saved file.
+A container or another operating-system user does not automatically inherit your
+saved local configuration.
 
----
+## Connect your AI assistant
 
-## Configuration by Client
+First run setup using the same source and account that the client will use.
+Then add **one** of the following server definitions in your client's MCP settings.
 
-Replace `YOUR_API_KEY_HERE` with your actual Elsevier API key in every config block below.
+### Run directly with uvx
 
-### Claude Desktop
-
-**Config file:**
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+For clients using `mcpServers`, such as Claude Desktop or Cursor:
 
 ```json
 {
   "mcpServers": {
     "scopus": {
       "command": "uvx",
-      "args": ["scopus-mcp"],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
+      "args": ["josetra-scopus-mcp"]
     }
   }
 }
 ```
 
-Restart Claude Desktop after saving. A hammer icon (🔨) in the input bar confirms tools are loaded.
+### Use an installed executable
 
-### Claude Code (CLI)
+If you installed on PATH, use `"command": "scopus-mcp"` with `"args": []`.
+If the desktop app does not inherit your shell's PATH, use the absolute executable
+path reported by `Get-Command scopus-mcp` or `command -v scopus-mcp`.
 
-Add to your project's `.mcp.json` (or `.antigravity.json`):
+For a pip virtual environment, a Windows example is:
 
 ```json
 {
   "mcpServers": {
     "scopus": {
-      "command": "uvx",
-      "args": ["scopus-mcp"],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
+      "command": "C:/Projects/scopus-mcp/.venv/Scripts/scopus-mcp.exe",
+      "args": []
     }
   }
 }
 ```
 
-**From source (local development):**
+Replace the example path with your actual environment. On macOS/Linux it ends
+in `.venv/bin/scopus-mcp`. Forward slashes in Windows JSON paths avoid escaping
+backslashes.
+
+### Run a local checkout
+
 ```json
 {
   "mcpServers": {
     "scopus": {
       "command": "uv",
-      "args": [
-        "--directory", "/absolute/path/to/scopus-mcp",
-        "run", "scopus-mcp"
-      ],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
+      "args": ["--directory", "C:/Projects/scopus-mcp", "run", "scopus-mcp"]
     }
   }
 }
 ```
 
-Run `/mcp` in the Claude Code prompt to verify — you should see `scopus` with 7 tools.
+Replace the directory with your absolute path. This also works on macOS/Linux.
 
-### Cursor
+### VS Code
 
-Global config: `%APPDATA%\Cursor\User\globalStorage\cursor.mcp\mcp.json` (Windows)
-
-```json
-{
-  "mcpServers": {
-    "scopus": {
-      "command": "uvx",
-      "args": ["scopus-mcp"],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
-    }
-  }
-}
-```
-
-### VS Code + GitHub Copilot
-
-Create `.vscode/mcp.json` in your workspace:
+In `.vscode/mcp.json`, use the `servers` wrapper and `stdio` transport:
 
 ```json
 {
@@ -223,237 +332,158 @@ Create `.vscode/mcp.json` in your workspace:
     "scopus": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["scopus-mcp"],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
+      "args": ["josetra-scopus-mcp"]
     }
   }
 }
 ```
 
-### Windsurf
+Restart or reconnect the MCP server in your client. Confirm that it lists the
+Scopus tools, then ask: **“Find five papers about machine learning in medicine.”**
 
-Config: `%APPDATA%\Codeium\windsurf\mcp_config.json` (Windows)
+> Running `scopus-mcp`, `scopus` or `scps` **without a subcommand** starts the MCP
+> server and waits for input. A quiet terminal is expected. Use `--help` for CLI
+> help, `setup` for configuration or `check` for diagnostics.
 
-```json
-{
-  "mcpServers": {
-    "scopus": {
-      "command": "uvx",
-      "args": ["scopus-mcp"],
-      "env": {
-        "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-      }
-    }
-  }
-}
+## Examples
+
+These examples assume a PATH installation; otherwise add your uvx or uv run prefix.
+
+```sh
+scopus search 'TITLE-ABS-KEY("machine learning")' --count 5
+scopus abstract 10.1038/nature14539 --type doi -f json
+scopus search-authors 'AUTHLASTNAME(Smith)' --start 25
+scopus author 7401234567
+scopus citation-count --doi 10.1038/nature14539
+scopus citations 85180904906 --start-year 2020
 ```
 
-### Zed
+Export references or keep a reproducible search record:
 
-Edit `~/.config/zed/settings.json`:
-
-```json
-{
-  "context_servers": {
-    "scopus": {
-      "command": {
-        "path": "uvx",
-        "args": ["scopus-mcp"],
-        "env": {
-          "SCOPUS_API_KEY": "YOUR_API_KEY_HERE"
-        }
-      }
-    }
-  }
-}
+```sh
+scopus search 'TITLE-ABS-KEY(biodiversity)' --all --max 500 -f ris -o papers.ris --record search-record.json
+scopus abstract 10.1038/nature14539 --type doi -f bibtex -o paper.bib
+scopus search 'AU-ID(7401234567)' -f csl-json -o papers.json
 ```
 
-### Continue.dev
+General formats: `table`, `json`, `jsonl`, `csv`, `md`. Paper search and abstract
+retrieval also support `ris`, `bibtex`, `csl-json`. Search records can have
+incomplete author metadata; retrieve individual abstracts for richer exports.
 
-Edit `.continue/config.yaml`:
+`--all` retrieves up to `--max` and the implemented 5,000-record offset window.
+Check `complete_corpus`, `truncated` and `stop_reason` before treating results as
+complete. Missing metrics remain null, not zero. JSON preserves original retrieval
+timestamps separately from the time it was served; `--record` saves query and
+completeness metadata without credentials.
 
-```yaml
-mcpServers:
-  - name: scopus
-    command: uvx
-    args:
-      - scopus-mcp
-    env:
-      SCOPUS_API_KEY: "YOUR_API_KEY_HERE"
+```sh
+scopus describe --json          # Command and output-schema discovery
+scopus cache stats -f json
+scopus cache clear
 ```
 
-### Generic stdio (any MCP client)
+Data goes to stdout; notes go to stderr. `--json` aliases `-f json`.
 
-```
-command:  uvx
-args:     ["scopus-mcp"]
-env:      SCOPUS_API_KEY=YOUR_API_KEY_HERE
-```
+| Exit code | Meaning |
+|---|---|
+| 0 | Successful operation, including empty results |
+| 1 | API/unexpected response |
+| 2 | Usage error or interrupted operation |
+| 3 | Resource not found |
+| 4 | Authentication/configuration error |
+| 5 | Quota/rate limit |
+| 6 | Network failure or timeout |
 
----
+## MCP tools and resources
 
-## Automated Setup Script
+| Tool | Purpose |
+|---|---|
+| `scopus_search` | Paginated paper search |
+| `scopus_search_authors` | Paginated author search |
+| `scopus_search_affiliations` | Paginated institution search |
+| `scopus_get_abstract` | Paper by Scopus ID, DOI, EID or PubMed ID |
+| `scopus_get_abstracts` | Batches of up to 25 identifiers |
+| `scopus_get_author` | Author profile and available metrics |
+| `scopus_get_citation_count` | Citation total |
+| `scopus_get_citations_overview` | Citations by year |
+| `scopus_check_access` | Live endpoint diagnostics |
+| `scopus_get_references` | Available references from a paper |
+| `scopus_get_citing_documents` | Paginated citing papers |
+| `scopus_analyze_results` | Aggregates over a bounded retrieved corpus |
 
-```bash
-# Interactive setup (auto-detects installed clients)
-python setup_mcp.py
+Resources: `scopus://search-syntax`, `scopus://subject-areas`, `scopus://api-reference`.
+Prompts: `systematic_literature_review`, `author_impact_analysis`, `research_trend_query`.
+Prompts are workflow templates; corpus aggregates describe retrieved documents,
+not necessarily all matching literature.
 
-# Non-interactive
-python setup_mcp.py --key YOUR_API_KEY_HERE --yes
+## Configuration reference
 
-# Dry-run preview
-python setup_mcp.py --key YOUR_API_KEY_HERE --dry-run --yes
-```
+| Variable | Default | Purpose |
+|---|---|---|
+| `SCOPUS_API_KEY` | Required or saved through setup | Elsevier API key |
+| `SCOPUS_INST_TOKEN` | Optional | Institutional token when applicable |
+| `SCOPUS_CACHE_TTL` | `300` | Cache lifetime in seconds; `0` disables caching |
+| `SCOPUS_MAX_RETRIES` | `3` | Additional attempts, 0–10 |
+| `SCOPUS_MAX_WAIT_SECONDS` | `10` | Cumulative quota/retry wait budget, 0–60 seconds |
+| `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR or CRITICAL |
 
----
+Quotas are tracked per API family and depend on your entitlement. Large reset
+delays return an error rather than waiting for days. See
+[Elsevier's access and quota guidance](https://dev.elsevier.com/api_key_settings.html).
 
-## Available Tools (7)
+## Update or uninstall
 
-| Tool | Description |
-|------|-------------|
-| `scopus_search` | Search papers with Boolean queries — TITLE-ABS-KEY, AUTH, AFFIL, PUBYEAR, DOCTYPE… |
-| `scopus_get_abstract` | Full paper record by Scopus ID, DOI, EID, or PubMed ID |
-| `scopus_get_author` | Researcher profile: h-index, total citations, document count, affiliation, ORCID |
-| `scopus_search_authors` | Find researchers by name, ORCID, or institution |
-| `scopus_search_affiliations` | Find institution records by name or country |
-| `scopus_get_citation_count` | Quick citation count by Scopus ID or DOI |
-| `scopus_get_citations_overview` | Year-by-year citation timeline for a paper |
+**PyPI installation on PATH**
 
----
-
-## Available Prompts (3)
-
-Prompts are reusable research workflows that generate structured query strategies.
-
-| Prompt | Arguments | Description |
-|--------|-----------|-------------|
-| `systematic_literature_review` | `topic`, `population`, `intervention`, `outcome`, `start_year` | Generates a PICO-framed SLR search strategy with Boolean queries and PRISMA flow template |
-| `author_impact_analysis` | `author_name`, `institution` | Step-by-step plan to evaluate a researcher's h-index, citation trends, and collaboration network |
-| `research_trend_query` | `topic`, `field_code`, `compare_topic` | Decade-by-decade publication trend queries with document type breakdown and OA analysis |
-
----
-
-## Available Resources (3)
-
-Resources are reference documents agents can read at any time.
-
-| Resource URI | Contents |
-|-------------|----------|
-| `scopus://search-syntax` | Complete Boolean query reference — field codes, operators, wildcards, examples |
-| `scopus://subject-areas` | All `SUBJAREA()` discipline codes organized by field |
-| `scopus://api-reference` | Tool quota costs, identifier formats, and recommended workflow patterns |
-
----
-
-## Example Queries
-
-```
-# Find recent papers on a topic
-TITLE-ABS-KEY("machine learning" AND cancer) AND PUBYEAR > 2020
-
-# Reviews only
-TITLE-ABS-KEY("federated learning") AND DOCTYPE(re)
-
-# By author ID
-AU-ID(7401234567) AND SUBJAREA(COMP)
-
-# From a specific institution
-AF-ID(60022195) AND TITLE-ABS-KEY("robotics")
-
-# Open access papers in a specific journal
-SRCTITLE("Nature Medicine") AND OPENACCESS(1) AND PUBYEAR > 2022
-
-# Cross-disciplinary topic
-TITLE-ABS-KEY("climate change") AND (SUBJAREA(ECON) OR SUBJAREA(ENVI))
+```sh
+uv tool upgrade josetra-scopus-mcp
 ```
 
----
+**Source checkout**
 
-## Rate Limits
-
-The server tracks rate limits from response headers and sleeps automatically before making calls when quota is exhausted.
-
-| Endpoint | Weekly Quota |
-|----------|:------------:|
-| Scopus Search | 20,000 |
-| Abstract Retrieval | 5,000 |
-| Author Retrieval | 5,000 |
-| Citation Count | **50,000** |
-| Citations Overview | 5,000 |
-
-> **Tip:** Use `scopus_get_citation_count` (50K quota) for bulk citation checks. Reserve `scopus_get_abstract` (5K quota) for the papers you actually need in detail.
-
----
-
-## Verify It's Working
-
-```bash
-# Fastest check: validates your API key live against every endpoint
-scopus check
-
-# Interactive browser UI (recommended for MCP-specific debugging)
-npx @modelcontextprotocol/inspector uvx scopus-mcp
-
-# Quick smoke test (server starts and exits cleanly)
-echo "" | SCOPUS_API_KEY=your_key uvx scopus-mcp
-
-# Unit tests (from source)
+```sh
+git pull --ff-only
 uv sync --group dev
-uv run pytest tests/ -v
-# Expected: 19 passed
 ```
 
----
+For pip, run `python -m pip install --upgrade josetra-scopus-mcp` with the same environment's Python. Restart running MCP clients after updating. For repeatable deployments, replace
+the Git source with `git+https://github.com/JOSETRA44/scopus-mcp.git@COMMIT_SHA`,
+using the full commit you intend to install.
+
+Uninstall a uv tool with `uv tool uninstall josetra-scopus-mcp`. For pip, use the same
+virtual environment's Python: `python -m pip uninstall josetra-scopus-mcp`.
+Uninstalling the package does not remove your saved credentials; locate them
+with `scopus setup --show` before uninstalling if you also want to remove them.
 
 ## Troubleshooting
 
-**`command not found: uvx`**
-Install uv: https://docs.astral.sh/uv/getting-started/installation/
+| Symptom | What to do |
+|---|---|
+| `uv` / `uvx` not found | Install uv and reopen the terminal. |
+| `scopus` not found after a uv install | Run `uv tool update-shell`, reopen the terminal and inspect `uv tool dir --bin`. |
+| `setup` is missing or tool names differ | Install `josetra-scopus-mcp`; the PyPI package named `scopus-mcp` is a different project. |
+| MCP client cannot find the command | Use the absolute executable path; desktop apps may have a different PATH. |
+| Terminal appears to wait forever | No subcommand starts MCP stdio. Use `scopus --help` for terminal use. |
+| Missing API key | Run setup under the same account as the MCP client. |
+| HTTP 401 / 403 | Run `scopus check`; verify credentials and endpoint entitlement with Elsevier or your institution. |
+| Saved key appears ignored | Environment variables and the working-directory `.env` override saved configuration. |
+| Hidden input is unavailable | Run setup in an interactive terminal or inject credentials through the environment. |
+| Windows reports an executable is in use during update | Stop that MCP server in its client, update, then restart it. |
 
-**`Configuration error: Missing required environment variable: SCOPUS_API_KEY`**
-Make sure your config's `"env"` block has `"SCOPUS_API_KEY": "your_actual_key"` — not a placeholder.
+## Development
 
-**Tools fail with HTTP 401**
-API key is invalid or expired. Regenerate at [dev.elsevier.com](https://dev.elsevier.com/).
+From a source checkout:
 
-**Tools fail with HTTP 403**
-Your key may lack Scopus access. An institutional subscription is required for most endpoints. Ask your librarian about `SCOPUS_INST_TOKEN`.
-
-**First run is slow**
-uv downloads and caches the package on first run. Subsequent starts take ~0.2s.
-
-**Tools appear but return empty results**
-Try broadening your query: replace `TITLE(...)` with `TITLE-ABS-KEY(...)` or remove `PUBYEAR` constraints.
-
----
-
-## Project Structure
-
-```
-scopus-mcp/
-├── src/scopus_mcp/
-│   ├── server.py        # Entry point — dispatches to CLI or FastMCP stdio server
-│   ├── cli.py           # Terminal CLI (scopus / scps): subcommands + check diagnostic
-│   ├── config.py        # Env var configuration (pydantic-settings)
-│   ├── client.py        # Async HTTP client + TTL cache + rate limiter
-│   ├── exceptions.py    # Error hierarchy
-│   ├── formatters.py    # Raw Scopus JSON → clean AI-friendly dicts
-│   ├── tools/           # 7 MCP tools (search, abstract, author, citations)
-│   ├── prompts/         # 3 MCP prompts (SLR, author analysis, trend query)
-│   └── resources/       # 3 MCP resources (syntax, subject areas, API reference)
-├── scopus-researcher/   # Agent skill (npx skills add JOSETRA44/scopus-mcp@scopus-researcher)
-│   ├── SKILL.md
-│   └── references/
-├── tests/               # Unit tests (19 cases, no network required)
-├── setup_mcp.py         # Automated config installer for all clients
-├── .env.example         # Environment variable template
-└── pyproject.toml       # Package definition
+```sh
+uv run pytest
+uv run ruff check src tests
+uv run mypy
+uv run python -m build
 ```
 
----
+Tests use fake credentials and mocked HTTP. CI is configured for Windows/Linux
+and Python 3.11/3.13, including MCP transport and package installation checks.
+See [CHANGELOG.md](CHANGELOG.md), [IMPLEMENTATION.md](IMPLEMENTATION.md) and
+the [PyPI release guide](docs/PUBLISHING.md).
 
-## License
-
-[MIT](LICENSE) — © 2026 JOSETRA44
+[MIT license](LICENSE) · [Report an issue](https://github.com/JOSETRA44/scopus-mcp/issues)
