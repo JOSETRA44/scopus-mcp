@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+The first official PyPI distribution is prepared as `josetra-scopus-mcp` 0.1.0.
+Publication uses `publish.yml`, GitHub environment `pypi` and Trusted Publishing.
+The matching console alias supports `uvx josetra-scopus-mcp`; existing commands remain.
+
 - Guided `scopus setup` in English/Spanish with hidden secret input, explicit
   save, private atomic user configuration, environment import and status display.
 - Typed MCP outputs and read-only annotations; services shared with the CLI.
