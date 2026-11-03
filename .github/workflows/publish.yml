@@ -1,0 +1,70 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+      - run: uv sync --group dev
+      - name: Validate release identity and tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: python
+        run: |
+          import os
+          import subprocess
+          command = ['uv', 'run', 'python', 'scripts/check_release.py', '--metadata-only']
+          if os.environ['RELEASE_TAG']:
+              command += ['--tag', os.environ['RELEASE_TAG']]
+          subprocess.run(command, check=True)
+      - run: uv run python -m build
+      - run: uv run python scripts/check_release.py
+      - run: uv run python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    # A manual run validates/builds only. Publishing a GitHub release uploads.
+    if: github.event_name == 'release' && github.repository == 'JOSETRA44/scopus-mcp'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/josetra-scopus-mcp
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-distributions
+          path: dist/
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          packages-dir: dist/
+          attestations: true

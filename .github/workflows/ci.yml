@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -44,7 +45,7 @@ jobs:
               scripts = root / 'env' / ('Scripts' if os.name == 'nt' else 'bin')
               python = scripts / ('python.exe' if os.name == 'nt' else 'python')
               subprocess.run([str(python), '-m', 'pip', 'install', str(wheel)], check=True)
-              for command in ('scopus', 'scps', 'scopus-mcp'):
+              for command in ('scopus', 'scps', 'scopus-mcp', 'josetra-scopus-mcp'):
                   executable = scripts / (command + ('.exe' if os.name == 'nt' else ''))
                   subprocess.run([str(executable), '--version'], cwd=root, check=True)
               subprocess.run([str(scripts / ('scopus.exe' if os.name == 'nt' else 'scopus')),
