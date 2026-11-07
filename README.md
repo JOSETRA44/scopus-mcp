@@ -11,6 +11,7 @@
 **Search academic literature from your AI assistant or terminal.** Find papers,
 retrieve abstracts, explore citations and export references with Elsevier Scopus.
 Includes a guided setup, 12 MCP tools and a standalone CLI.
+**Después de inatalar el MCP los agentes pueden conectarse a scopus y acceder a los miles de papers indexados**
 
 [Quick start](#quick-start) · [Installation methods](#installation-methods) ·
 [API key setup](#api-key-setup) · [Connect your AI assistant](#connect-your-ai-assistant) ·
